@@ -1,0 +1,10 @@
+httpx<0.29,>=0.27
+jinja2<4.0,>=3.1
+pydantic<3.0,>=2.7
+python-dotenv<2.0,>=1.0
+PyYAML<7.0,>=6.0
+tenacity<10.0,>=8.2
+typer<1.0,>=0.12
+
+[dev]
+pytest<9.0,>=8.0

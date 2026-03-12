@@ -1,0 +1,10 @@
+analysis:
+  zero_hit_days: 90
+  low_hit_threshold: 5
+  broad_group_size_threshold: 50
+  enable_duplicate_candidates: true
+  enable_shadow_candidates: true
+
+notes:
+  - "Use this file to tune analyzer thresholds without changing code."
+  - "Fields are merged into the analysis section of the main settings file."

@@ -1,0 +1,67 @@
+{
+  "rulebase": [
+    {
+      "type": "access-section",
+      "name": "User Access",
+      "rulebase": [
+        {
+          "type": "access-rule",
+          "uid": "rule-disabled",
+          "rule-number": 1,
+          "name": "Disabled cleanup",
+          "enabled": false,
+          "action": {"name": "Accept"},
+          "source": [{"uid": "src-any", "name": "Any", "type": "CpmiAnyObject"}],
+          "destination": [{"uid": "dst-any", "name": "Any", "type": "CpmiAnyObject"}],
+          "service": [{"uid": "svc-any", "name": "Any", "type": "service-any"}],
+          "track": {"name": "None"},
+          "comments": "Deprecated",
+          "hits": {"value": 0, "last-date": "2024-10-01T00:00:00Z"}
+        }
+      ]
+    },
+    {
+      "type": "access-rule",
+      "uid": "rule-broad",
+      "rule-number": 2,
+      "name": "Broad internet allow",
+      "enabled": true,
+      "action": {"name": "Accept"},
+      "source": [{"uid": "src-any", "name": "Any", "type": "CpmiAnyObject"}],
+      "destination": [{"uid": "dst-any", "name": "Any", "type": "CpmiAnyObject"}],
+      "service": [{"uid": "svc-any", "name": "Any", "type": "service-any"}],
+      "track": {"name": "None"},
+      "comments": "",
+      "hits": {"value": 150, "last-date": "2026-02-01T10:00:00Z"}
+    },
+    {
+      "type": "access-rule",
+      "uid": "rule-unused-a",
+      "rule-number": 3,
+      "name": "Rule 3",
+      "enabled": true,
+      "action": {"name": "Accept"},
+      "source": [{"uid": "src-host-a", "name": "Host-A", "type": "host"}],
+      "destination": [{"uid": "dst-app", "name": "App-Server", "type": "host"}],
+      "service": [{"uid": "svc-https", "name": "https", "type": "service-tcp"}],
+      "track": {"name": "Log"},
+      "comments": "",
+      "hits": {"value": 0, "last-date": "2024-09-01T00:00:00Z"}
+    },
+    {
+      "type": "access-rule",
+      "uid": "rule-unused-b",
+      "rule-number": 4,
+      "name": "Duplicate application access",
+      "enabled": true,
+      "action": {"name": "Accept"},
+      "source": [{"uid": "src-host-a", "name": "Host-A", "type": "host"}],
+      "destination": [{"uid": "dst-app", "name": "App-Server", "type": "host"}],
+      "service": [{"uid": "svc-https", "name": "https", "type": "service-tcp"}],
+      "track": {"name": "Log"},
+      "comments": "Legacy duplicate",
+      "hits": {"value": 0, "last-date": "2024-09-01T00:00:00Z"}
+    }
+  ],
+  "total": 4
+}

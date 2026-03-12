@@ -1,0 +1,2 @@
+[console_scripts]
+cp-review = cp_review.cli:app

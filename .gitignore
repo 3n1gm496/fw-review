@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+*.pyd
+output/raw/*
+output/normalized/*
+output/reports/*
+!output/raw/.gitkeep
+!output/normalized/.gitkeep
+!output/reports/.gitkeep

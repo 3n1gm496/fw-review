@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>cp-review report</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; color: #17202a; }
+    h1, h2, h3 { color: #0b4f6c; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+    th, td { border: 1px solid #d5d8dc; padding: 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #ebf5fb; }
+    .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; background: #d6eaf8; margin-right: 0.25rem; }
+    .section { margin-bottom: 2rem; }
+    pre { white-space: pre-wrap; word-break: break-word; background: #f8f9f9; padding: 0.75rem; }
+  </style>
+</head>
+<body>
+  <h1>cp-review technical report</h1>
+  <p>Generated at {{ generated_at.isoformat() }}</p>
+  <p>Source host: {{ dataset.source_host }}</p>
+
+  <div class="section">
+    <h2>Executive technical summary</h2>
+    <p>Total rules reviewed: {{ dataset.rules | length }}</p>
+    <p>Total findings: {{ findings | length }}</p>
+    <p>
+      {% for key, value in by_severity.items() %}
+      <span class="pill">{{ key }}: {{ value }}</span>
+      {% endfor %}
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Counts by finding type</h2>
+    <table>
+      <thead><tr><th>Finding type</th><th>Count</th></tr></thead>
+      <tbody>
+      {% for key, value in by_type.items() %}
+        <tr><td>{{ key }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Top high-risk rules</h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Type</th><th>Severity</th><th>Risk</th><th>Action</th></tr></thead>
+      <tbody>
+      {% for item in top_risk %}
+        <tr>
+          <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_name }}</td>
+          <td>{{ item.finding_type }}</td>
+          <td>{{ item.severity }}</td>
+          <td>{{ item.risk_score }}</td>
+          <td>{{ item.recommended_action }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Top cleanup candidates</h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Type</th><th>Cleanup confidence</th><th>Action</th></tr></thead>
+      <tbody>
+      {% for item in top_cleanup %}
+        <tr>
+          <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_name }}</td>
+          <td>{{ item.finding_type }}</td>
+          <td>{{ item.cleanup_confidence }}</td>
+          <td>{{ item.recommended_action }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Per-finding details</h2>
+    {% for item in findings %}
+      <h3>{{ item.finding_type }} | {{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }}</h3>
+      <p><strong>Rule:</strong> {{ item.rule_name }} ({{ item.rule_uid }})</p>
+      <p><strong>Severity:</strong> {{ item.severity }} | <strong>Risk:</strong> {{ item.risk_score }} | <strong>Cleanup confidence:</strong> {{ item.cleanup_confidence }}</p>
+      <p><strong>Recommended action:</strong> {{ item.recommended_action }}</p>
+      <p><strong>Review note:</strong> {{ item.review_note }}</p>
+      <pre>{{ item.evidence | tojson(indent=2) }}</pre>
+    {% endfor %}
+  </div>
+
+  <div class="section">
+    <h2>Configuration summary</h2>
+    <pre>{{ config_summary | tojson(indent=2) }}</pre>
+  </div>
+
+  <div class="section">
+    <h2>Caveats and assumptions</h2>
+    <ul>
+      <li>Collection is read-only and persists raw payloads for troubleshooting.</li>
+      <li>Inline layers and uncertain response structures are marked conservatively for manual review.</li>
+      <li>Targeted log-query payloads may need tuning against environment-specific API responses.</li>
+    </ul>
+  </div>
+</body>
+</html>

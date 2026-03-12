@@ -1,0 +1,31 @@
+management:
+  host: "mgmt.example.local"
+  username_env: "CP_MGMT_USERNAME"
+  password_env: "CP_MGMT_PASSWORD"
+  ca_bundle: "/opt/certs/internal_ca.pem"
+  insecure: false
+  timeout_seconds: 60
+  max_retries: 4
+
+collection:
+  package: "STANDARD_OR_SELECTED_PACKAGE"
+  page_limit: 200
+  save_raw: true
+  collect_hitcount: true
+  collect_logs_for_shortlist: true
+  log_days: 90
+  shortlist_log_limit: 50
+  output_dir: "./output"
+
+analysis:
+  zero_hit_days: 90
+  low_hit_threshold: 5
+  broad_group_size_threshold: 50
+  enable_duplicate_candidates: true
+  enable_shadow_candidates: true
+  review_rules_path: "./config/review_rules.example.yaml"
+
+reporting:
+  html_report: true
+  csv_findings: true
+  json_findings: true

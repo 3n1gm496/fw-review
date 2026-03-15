@@ -39,6 +39,7 @@ src/cp_review/reports/json_writer.py
 src/cp_review/scoring/__init__.py
 src/cp_review/scoring/priority.py
 tests/test_analyzers.py
+tests/test_checkpoint_client.py
 tests/test_collection.py
 tests/test_config.py
 tests/test_flatten.py

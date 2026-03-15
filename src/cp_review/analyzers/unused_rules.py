@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from cp_review.config import AnalysisConfig
 from cp_review.models import FindingRecord, RuleRecord
@@ -12,7 +12,7 @@ from cp_review.scoring.priority import make_finding
 def run(rules: list[RuleRecord], analysis: AnalysisConfig) -> list[FindingRecord]:
     """Flag zero-hit rules over the configured review window."""
     findings: list[FindingRecord] = []
-    cutoff = datetime.now(timezone.utc) - timedelta(days=analysis.zero_hit_days)
+    cutoff = datetime.now(UTC) - timedelta(days=analysis.zero_hit_days)
     for rule in rules:
         if rule.hit_count != 0:
             continue

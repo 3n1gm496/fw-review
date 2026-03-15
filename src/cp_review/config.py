@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 from copy import deepcopy
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -119,6 +119,7 @@ def load_settings(
     *,
     env_file: Path | None = None,
     overrides: dict[str, Any] | None = None,
+    require_credentials: bool = True,
 ) -> AppConfig:
     """Load application settings from YAML, review overrides, env, and CLI overrides."""
     config_dir = config_path.parent.resolve()
@@ -159,14 +160,19 @@ def load_settings(
 
     username = os.getenv(settings.management.username_env)
     password = os.getenv(settings.management.password_env)
-    if not username or not password:
-        raise ConfigurationError(
-            "Management API credentials are missing. "
-            f"Set {settings.management.username_env} and {settings.management.password_env}."
-        )
-
-    settings.management.username = SecretStr(username)
-    settings.management.password = SecretStr(password)
+    if require_credentials:
+        if not username or not password:
+            raise ConfigurationError(
+                "Management API credentials are missing. "
+                f"Set {settings.management.username_env} and {settings.management.password_env}."
+            )
+        settings.management.username = SecretStr(username)
+        settings.management.password = SecretStr(password)
+    else:
+        if username:
+            settings.management.username = SecretStr(username)
+        if password:
+            settings.management.password = SecretStr(password)
     if not settings.collection.output_dir.is_absolute():
         settings.collection.output_dir = (repo_root / settings.collection.output_dir).resolve()
     if settings.analysis.review_rules_path and not settings.analysis.review_rules_path.is_absolute():
@@ -196,7 +202,7 @@ def apply_cli_overrides(
 
 def build_run_paths(output_dir: Path, run_id: str | None = None) -> RunPaths:
     """Create timestamped output paths for a run."""
-    run_id = run_id or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    run_id = run_id or datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
     base_output = output_dir.resolve()
     raw_dir = base_output / "raw" / run_id
     normalized_dir = base_output / "normalized" / run_id

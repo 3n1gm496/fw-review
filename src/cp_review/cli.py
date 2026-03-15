@@ -24,9 +24,17 @@ app = typer.Typer(add_completion=False, no_args_is_help=True)
 LOGGER = logging.getLogger(__name__)
 
 
-def _load_config(config: Path, env_file: Path | None, ca_bundle: str | None, insecure: bool | None, package: str | None):
+def _load_config(
+    config: Path,
+    env_file: Path | None,
+    ca_bundle: str | None,
+    insecure: bool | None,
+    package: str | None,
+    *,
+    require_credentials: bool = True,
+):
     overrides = apply_cli_overrides(ca_bundle=ca_bundle, insecure=insecure, package=package)
-    return load_settings(config, env_file=env_file, overrides=overrides)
+    return load_settings(config, env_file=env_file, overrides=overrides, require_credentials=require_credentials)
 
 
 def _write_findings_bundle(findings, reports_dir: Path, settings, dataset) -> Path:
@@ -80,7 +88,7 @@ def analyze(
 ) -> None:
     """Analyze a normalized dataset and emit findings JSON/CSV."""
     configure_logging()
-    settings = _load_config(config, env_file, None, None, None)
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
     if dataset_path is None:
         dataset_path = latest_file(settings.collection.output_dir / "normalized", "*/dataset.json")
     dataset = load_dataset(dataset_path)
@@ -100,7 +108,7 @@ def report(
 ) -> None:
     """Generate the HTML report from a dataset and findings."""
     configure_logging()
-    settings = _load_config(config, env_file, None, None, None)
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
     if dataset_path is None:
         dataset_path = latest_file(settings.collection.output_dir / "normalized", "*/dataset.json")
     dataset = load_dataset(dataset_path)

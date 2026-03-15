@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from cp_review.collectors import save_raw_json
@@ -48,6 +48,6 @@ def collect_logs_for_rule_uids(
             query=payload["query"],
             count=response.get("logs-count") or response.get("total") or len(logs),
             sample_logs=list(logs)[:5],
-            collected_at=datetime.now(timezone.utc),
+            collected_at=datetime.now(UTC),
         )
     return evidence

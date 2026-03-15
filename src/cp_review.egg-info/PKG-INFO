@@ -12,7 +12,12 @@ Requires-Dist: PyYAML<7.0,>=6.0
 Requires-Dist: tenacity<10.0,>=8.2
 Requires-Dist: typer<1.0,>=0.12
 Provides-Extra: dev
+Requires-Dist: mypy<2.0,>=1.10; extra == "dev"
+Requires-Dist: pre-commit<4.0,>=3.7; extra == "dev"
 Requires-Dist: pytest<9.0,>=8.0; extra == "dev"
+Requires-Dist: pytest-cov<7.0,>=5.0; extra == "dev"
+Requires-Dist: ruff<0.13,>=0.12; extra == "dev"
+Requires-Dist: types-PyYAML<7.0,>=6.0; extra == "dev"
 
 # cp-review
 
@@ -51,6 +56,17 @@ cp-review report --config config/settings.yaml
 cp-review full-run --config config/settings.yaml
 ```
 
+## Enterprise quality workflow
+
+```bash
+make setup
+make check
+```
+
+- `make check` runs lint, type checks, and tests with coverage enforcement.
+- CI workflows under `.github/workflows/` run the same checks on pull requests.
+- See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
+
 ## Outputs
 
 - `output/raw/<run_id>/`: raw API responses for rulebase pages, packages, objects, and targeted logs
@@ -64,3 +80,8 @@ cp-review full-run --config config/settings.yaml
 - Check Point response fields can vary across deployments and details levels. The project isolates uncertain schema handling in adapter helpers and preserves raw payloads for inspection.
 - Inline-layer handling is conservative in v1. Unsupported nested structures are marked in the normalized dataset and surfaced as warnings/findings instead of being silently dropped.
 - Targeted log queries rely on localized adapter assumptions and may need tuning against saved raw responses in a given environment.
+
+## Governance
+
+- Contribution guide: `CONTRIBUTING.md`
+- Security policy: `SECURITY.md`

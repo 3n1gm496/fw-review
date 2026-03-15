@@ -35,6 +35,17 @@ cp-review report --config config/settings.yaml
 cp-review full-run --config config/settings.yaml
 ```
 
+## Enterprise quality workflow
+
+```bash
+make setup
+make check
+```
+
+- `make check` runs lint, type checks, and tests with coverage enforcement.
+- CI workflows under `.github/workflows/` run the same checks on pull requests.
+- See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
+
 ## Outputs
 
 - `output/raw/<run_id>/`: raw API responses for rulebase pages, packages, objects, and targeted logs
@@ -48,3 +59,8 @@ cp-review full-run --config config/settings.yaml
 - Check Point response fields can vary across deployments and details levels. The project isolates uncertain schema handling in adapter helpers and preserves raw payloads for inspection.
 - Inline-layer handling is conservative in v1. Unsupported nested structures are marked in the normalized dataset and surfaced as warnings/findings instead of being silently dropped.
 - Targeted log queries rely on localized adapter assumptions and may need tuning against saved raw responses in a given environment.
+
+## Governance
+
+- Contribution guide: `CONTRIBUTING.md`
+- Security policy: `SECURITY.md`

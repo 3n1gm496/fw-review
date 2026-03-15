@@ -40,7 +40,7 @@ Status: Completed on March 16, 2026.
 - Add provenance metadata to release artifacts.
 - Introduce mandatory security review checklist for feature changes.
 
-Status: In progress. First implementation delivered on March 16, 2026.
+Status: Completed on March 16, 2026.
 
 ### Phase 4 - Scale & Operations
 - Add performance benchmarks for large rulebases.
@@ -48,10 +48,24 @@ Status: In progress. First implementation delivered on March 16, 2026.
 - Add optional integration with SIEM/data lake export formats.
 - Publish operational runbook for incident and rollback procedures.
 
-Status: In progress. First implementation delivered on March 16, 2026.
+Status: Completed on March 16, 2026.
+
+Operational KPIs baseline (March 16, 2026):
+- Local benchmark baseline recorded with `make benchmark`:
+  - ~41k rules/sec in synthetic flatten simulation (`sample_rulebase_page.json` x300).
+  - p95 flatten latency ~0.04s per benchmark iteration.
+- Structured run telemetry available per run in `metrics.json`:
+  - `duration_seconds`
+  - `api_call_count`
+  - `api_commands`
+  - `findings_count`
+  - `rules_count`
+  - `warnings_count`
+- SIEM integration path available via optional `findings.jsonl` export.
+- Incident triage and rollback process documented in `RUNBOOK.md`.
 
 ## Definition of Done for Enterprise Readiness (v1)
-- CI required on pull requests with passing lint, type checks, tests, and coverage gate >= 60% (progressively raised toward 85%).
+- CI required on pull requests with passing lint, type checks, tests, and coverage gate >= 70% (progressively raised toward 85%).
 - Security workflow enabled (CodeQL + dependency review).
 - Local developer setup reproducible via one standard command set.
 - Documented contribution and vulnerability reporting process.

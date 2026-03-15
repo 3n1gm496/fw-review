@@ -20,7 +20,7 @@ test:
 	$(PYTHON) -m pytest -q
 
 test-cov:
-	$(PYTHON) -m pytest --cov=cp_review --cov-report=term-missing --cov-fail-under=60
+	$(PYTHON) -m pytest --cov=cp_review --cov-report=term-missing --cov-fail-under=70
 
 sbom:
 	mkdir -p output

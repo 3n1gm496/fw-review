@@ -7,6 +7,11 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 ## [Unreleased]
 
 ### Added
+- Placeholder for upcoming changes.
+
+## [0.2.0] - 2026-03-16
+
+### Added
 - Enterprise quality gates (`ruff`, `mypy`, `pytest-cov`) via Makefile and CI.
 - Security workflows (CodeQL + dependency review).
 - Governance docs: roadmap, contribution guide, and security policy.

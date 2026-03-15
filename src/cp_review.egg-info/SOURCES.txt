@@ -7,6 +7,7 @@ src/cp_review/config.py
 src/cp_review/exceptions.py
 src/cp_review/logging_conf.py
 src/cp_review/models.py
+src/cp_review/provenance.py
 src/cp_review.egg-info/PKG-INFO
 src/cp_review.egg-info/SOURCES.txt
 src/cp_review.egg-info/dependency_links.txt
@@ -38,8 +39,12 @@ src/cp_review/reports/html_writer.py
 src/cp_review/reports/json_writer.py
 src/cp_review/scoring/__init__.py
 src/cp_review/scoring/priority.py
+tests/test_access_rulebase_collector.py
 tests/test_analyzers.py
 tests/test_checkpoint_client.py
+tests/test_cli_smoke.py
 tests/test_collection.py
 tests/test_config.py
 tests/test_flatten.py
+tests/test_hitcount.py
+tests/test_provenance.py

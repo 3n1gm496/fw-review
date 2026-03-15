@@ -12,7 +12,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Governance docs: roadmap, contribution guide, and security policy.
 - New tests for read-only API guardrails, config credential modes, CLI smoke paths, and collector contracts.
 - Output compatibility policy and release process documentation.
+- Supply-chain workflow with CycloneDX SBOM generation and build provenance attestation.
+- Dependency vulnerability scanning (`pip-audit`) with blocking policy in CI.
+- PR security checklist template for mandatory review controls.
+- Run-level provenance metadata output (`provenance.json`) for CLI commands.
 
 ### Changed
 - `analyze` and `report` commands now support offline execution without management API credentials.
-

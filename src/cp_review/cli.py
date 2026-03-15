@@ -16,6 +16,7 @@ from cp_review.config import apply_cli_overrides, build_run_paths, latest_file, 
 from cp_review.exceptions import CpReviewError
 from cp_review.logging_conf import configure_logging
 from cp_review.normalize.dataset import load_dataset, save_dataset
+from cp_review.provenance import write_provenance_file
 from cp_review.reports.csv_writer import write_findings_csv
 from cp_review.reports.html_writer import write_html_report
 from cp_review.reports.json_writer import write_findings_json
@@ -49,6 +50,16 @@ def _write_findings_bundle(findings, reports_dir: Path, settings, dataset) -> Pa
     return findings_json
 
 
+def _write_provenance(settings, reports_dir: Path, command: str, run_id: str, artifacts: dict[str, Path]) -> Path:
+    return write_provenance_file(
+        reports_dir / "provenance.json",
+        command=command,
+        run_id=run_id,
+        settings=settings,
+        artifacts=artifacts,
+    )
+
+
 def _collect_shortlist_rule_uids(findings, limit: int) -> list[str]:
     shortlist: list[str] = []
     interesting_types = {"unused_rules", "broad_allow", "no_log_rules", "high_risk_broad_usage"}
@@ -77,6 +88,13 @@ def collect(
     with CheckPointClient(settings) as client:
         dataset = collect_policy_snapshot(client, settings, run_paths)
     dataset_path = save_dataset(run_paths.normalized_dir / "dataset.json", dataset)
+    _write_provenance(
+        settings,
+        run_paths.reports_dir,
+        "collect",
+        dataset.run_id,
+        artifacts={"dataset_json": dataset_path},
+    )
     typer.echo(f"Collected dataset: {dataset_path}")
 
 
@@ -96,6 +114,18 @@ def analyze(
     reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
     reports_dir.mkdir(parents=True, exist_ok=True)
     findings_path = _write_findings_bundle(findings, reports_dir, settings, dataset)
+    _write_provenance(
+        settings,
+        reports_dir,
+        "analyze",
+        dataset.run_id,
+        artifacts={
+            "dataset_json": dataset_path,
+            "findings_json": reports_dir / "findings.json",
+            "findings_csv": reports_dir / "findings.csv",
+            "report_html": reports_dir / "report.html",
+        },
+    )
     typer.echo(f"Findings written: {findings_path}")
 
 
@@ -120,6 +150,18 @@ def report(
         findings=findings,
         dataset=dataset,
         settings=settings,
+    )
+    reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
+    _write_provenance(
+        settings,
+        reports_dir,
+        "report",
+        dataset.run_id,
+        artifacts={
+            "dataset_json": dataset_path,
+            "findings_json": findings_path,
+            "report_html": reports_dir / "report.html",
+        },
     )
     typer.echo(f"Report written: {report_path}")
 
@@ -147,6 +189,18 @@ def full_run(
                 save_dataset(run_paths.normalized_dir / "dataset.json", dataset)
                 findings = analyze_dataset(dataset, settings.analysis)
     _write_findings_bundle(findings, run_paths.reports_dir, settings, dataset)
+    _write_provenance(
+        settings,
+        run_paths.reports_dir,
+        "full-run",
+        dataset.run_id,
+        artifacts={
+            "dataset_json": run_paths.normalized_dir / "dataset.json",
+            "findings_json": run_paths.reports_dir / "findings.json",
+            "findings_csv": run_paths.reports_dir / "findings.csv",
+            "report_html": run_paths.reports_dir / "report.html",
+        },
+    )
     typer.echo(f"Full run completed: {dataset_path}")
 
 

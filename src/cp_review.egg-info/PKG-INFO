@@ -12,7 +12,9 @@ Requires-Dist: PyYAML<7.0,>=6.0
 Requires-Dist: tenacity<10.0,>=8.2
 Requires-Dist: typer<1.0,>=0.12
 Provides-Extra: dev
+Requires-Dist: cyclonedx-bom<5.0,>=4.1; extra == "dev"
 Requires-Dist: mypy<2.0,>=1.10; extra == "dev"
+Requires-Dist: pip-audit<3.0,>=2.9; extra == "dev"
 Requires-Dist: pre-commit<4.0,>=3.7; extra == "dev"
 Requires-Dist: pytest<9.0,>=8.0; extra == "dev"
 Requires-Dist: pytest-cov<7.0,>=5.0; extra == "dev"
@@ -61,9 +63,13 @@ cp-review full-run --config config/settings.yaml
 ```bash
 make setup
 make check
+make sbom
+make audit
 ```
 
 - `make check` runs lint, type checks, and tests with coverage enforcement.
+- `make sbom` generates a CycloneDX SBOM at `output/sbom.cdx.json`.
+- `make audit` runs dependency vulnerability scanning and fails on findings.
 - CI workflows under `.github/workflows/` run the same checks on pull requests.
 - See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
 
@@ -85,3 +91,6 @@ make check
 
 - Contribution guide: `CONTRIBUTING.md`
 - Security policy: `SECURITY.md`
+- Output compatibility policy: `OUTPUT_COMPATIBILITY.md`
+- Release workflow: `RELEASE.md`
+- Provenance metadata: `output/reports/<run_id>/provenance.json`

@@ -40,9 +40,13 @@ cp-review full-run --config config/settings.yaml
 ```bash
 make setup
 make check
+make sbom
+make audit
 ```
 
 - `make check` runs lint, type checks, and tests with coverage enforcement.
+- `make sbom` generates a CycloneDX SBOM at `output/sbom.cdx.json`.
+- `make audit` runs dependency vulnerability scanning and fails on findings.
 - CI workflows under `.github/workflows/` run the same checks on pull requests.
 - See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
 
@@ -66,3 +70,4 @@ make check
 - Security policy: `SECURITY.md`
 - Output compatibility policy: `OUTPUT_COMPATIBILITY.md`
 - Release workflow: `RELEASE.md`
+- Provenance metadata: `output/reports/<run_id>/provenance.json`

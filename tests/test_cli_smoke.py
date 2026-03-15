@@ -62,6 +62,8 @@ def test_cli_analyze_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
     findings_file = tmp_path / "output" / "reports" / "smoke-analyze" / "findings.json"
     assert findings_file.exists()
+    provenance_file = tmp_path / "output" / "reports" / "smoke-analyze" / "provenance.json"
+    assert provenance_file.exists()
 
 
 def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
@@ -88,3 +90,5 @@ def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
     report_file = tmp_path / "output" / "reports" / "smoke-report" / "report.html"
     assert report_file.exists()
+    provenance_file = tmp_path / "output" / "reports" / "smoke-report" / "provenance.json"
+    assert provenance_file.exists()

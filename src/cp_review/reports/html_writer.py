@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import Counter
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,7 +30,7 @@ def write_html_report(path: Path, *, findings: list[FindingRecord | dict[str, An
     )
     template = env.get_template("report.html.j2")
     html = template.render(
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         dataset=dataset,
         findings=normalized_findings,
         by_type=dict(by_type),

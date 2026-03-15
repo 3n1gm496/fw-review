@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from cp_review.collectors import save_raw_json
@@ -81,7 +81,7 @@ def collect_policy_snapshot(client: Any, settings: AppConfig, run_paths: RunPath
     object_cache = collect_referenced_objects(client, settings, run_paths, all_rules)
     enriched_rules = enrich_rules(all_rules, object_cache)
     return NormalizedDataset(
-        generated_at=datetime.now(timezone.utc),
+        generated_at=datetime.now(UTC),
         run_id=run_paths.run_id,
         source_host=settings.management.host,
         packages=package_names,

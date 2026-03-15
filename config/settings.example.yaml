@@ -29,3 +29,5 @@ reporting:
   html_report: true
   csv_findings: true
   json_findings: true
+  siem_jsonl: false
+  siem_jsonl_filename: "findings.jsonl"

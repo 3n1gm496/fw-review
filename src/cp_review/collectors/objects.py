@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
 
 from cp_review.collectors import save_raw_json
 from cp_review.config import AppConfig, RunPaths

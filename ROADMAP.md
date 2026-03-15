@@ -24,11 +24,15 @@
 - Add Makefile tasks to standardize developer workflows.
 - Improve config/runtime ergonomics and add regression tests.
 
+Status: Completed on March 16, 2026.
+
 ### Phase 2 - Product Reliability
 - Add contract tests for Check Point API adapters with recorded fixtures.
 - Add smoke tests for CLI command flows (`analyze`, `report`) on fixture datasets.
 - Define backward compatibility policy for output schema (`dataset.json`, findings).
 - Add changelog and semantic versioning workflow.
+
+Status: In progress. First implementation delivered on March 16, 2026.
 
 ### Phase 3 - Enterprise Security & Compliance
 - Add SBOM generation and artifact signing.

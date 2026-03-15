@@ -64,3 +64,5 @@ make check
 
 - Contribution guide: `CONTRIBUTING.md`
 - Security policy: `SECURITY.md`
+- Output compatibility policy: `OUTPUT_COMPATIBILITY.md`
+- Release workflow: `RELEASE.md`

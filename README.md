@@ -42,11 +42,13 @@ make setup
 make check
 make sbom
 make audit
+make benchmark
 ```
 
 - `make check` runs lint, type checks, and tests with coverage enforcement.
 - `make sbom` generates a CycloneDX SBOM at `output/sbom.cdx.json`.
 - `make audit` runs dependency vulnerability scanning and fails on findings.
+- `make benchmark` runs a repeatable flattening benchmark for large-rulebase simulation.
 - CI workflows under `.github/workflows/` run the same checks on pull requests.
 - See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
 
@@ -71,3 +73,4 @@ make audit
 - Output compatibility policy: `OUTPUT_COMPATIBILITY.md`
 - Release workflow: `RELEASE.md`
 - Provenance metadata: `output/reports/<run_id>/provenance.json`
+- Operational runbook: `RUNBOOK.md`

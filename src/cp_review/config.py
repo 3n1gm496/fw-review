@@ -85,6 +85,8 @@ class ReportingConfig(BaseModel):
     html_report: bool = True
     csv_findings: bool = True
     json_findings: bool = True
+    siem_jsonl: bool = False
+    siem_jsonl_filename: str = "findings.jsonl"
 
 
 class AppConfig(BaseModel):

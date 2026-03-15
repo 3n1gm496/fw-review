@@ -32,7 +32,7 @@ Status: Completed on March 16, 2026.
 - Define backward compatibility policy for output schema (`dataset.json`, findings).
 - Add changelog and semantic versioning workflow.
 
-Status: In progress. First implementation delivered on March 16, 2026.
+Status: Completed on March 16, 2026.
 
 ### Phase 3 - Enterprise Security & Compliance
 - Add SBOM generation and artifact signing.
@@ -47,6 +47,8 @@ Status: In progress. First implementation delivered on March 16, 2026.
 - Add structured run metrics (duration, API calls, finding counts).
 - Add optional integration with SIEM/data lake export formats.
 - Publish operational runbook for incident and rollback procedures.
+
+Status: In progress. First implementation delivered on March 16, 2026.
 
 ## Definition of Done for Enterprise Readiness (v1)
 - CI required on pull requests with passing lint, type checks, tests, and coverage gate >= 60% (progressively raised toward 85%).

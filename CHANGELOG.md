@@ -16,6 +16,10 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 - Dependency vulnerability scanning (`pip-audit`) with blocking policy in CI.
 - PR security checklist template for mandatory review controls.
 - Run-level provenance metadata output (`provenance.json`) for CLI commands.
+- Structured run metrics output (`metrics.json`) with duration and API/finding counters.
+- JSONL export option for SIEM/data-lake ingestion (`siem_jsonl`).
+- Flattening benchmark script and `make benchmark` workflow for performance tracking.
+- Operational runbook for triage and rollback procedures.
 
 ### Changed
 - `analyze` and `report` commands now support offline execution without management API credentials.

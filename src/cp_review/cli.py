@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
+from time import perf_counter
 
 import typer
 
@@ -20,6 +21,8 @@ from cp_review.provenance import write_provenance_file
 from cp_review.reports.csv_writer import write_findings_csv
 from cp_review.reports.html_writer import write_html_report
 from cp_review.reports.json_writer import write_findings_json
+from cp_review.reports.jsonl_writer import write_findings_jsonl
+from cp_review.run_metrics import build_run_metrics, write_run_metrics
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 LOGGER = logging.getLogger(__name__)
@@ -38,16 +41,26 @@ def _load_config(
     return load_settings(config, env_file=env_file, overrides=overrides, require_credentials=require_credentials)
 
 
-def _write_findings_bundle(findings, reports_dir: Path, settings, dataset) -> Path:
+def _write_findings_bundle(findings, reports_dir: Path, settings, dataset) -> dict[str, Path]:
+    artifacts: dict[str, Path] = {}
     findings_json = reports_dir / "findings.json"
     findings_csv = reports_dir / "findings.csv"
+    report_html = reports_dir / "report.html"
+    findings_jsonl = reports_dir / settings.reporting.siem_jsonl_filename
+
     if settings.reporting.json_findings:
         write_findings_json(findings_json, findings)
+        artifacts["findings_json"] = findings_json
     if settings.reporting.csv_findings:
         write_findings_csv(findings_csv, findings)
+        artifacts["findings_csv"] = findings_csv
     if settings.reporting.html_report:
-        write_html_report(reports_dir / "report.html", findings=findings, dataset=dataset, settings=settings)
-    return findings_json
+        write_html_report(report_html, findings=findings, dataset=dataset, settings=settings)
+        artifacts["report_html"] = report_html
+    if settings.reporting.siem_jsonl:
+        write_findings_jsonl(findings_jsonl, findings)
+        artifacts["siem_jsonl"] = findings_jsonl
+    return artifacts
 
 
 def _write_provenance(settings, reports_dir: Path, command: str, run_id: str, artifacts: dict[str, Path]) -> Path:
@@ -83,17 +96,33 @@ def collect(
 ) -> None:
     """Collect raw policy data and write a normalized dataset."""
     configure_logging()
+    started_at = perf_counter()
     settings = _load_config(config, env_file, ca_bundle, insecure, package)
     run_paths = build_run_paths(settings.collection.output_dir)
     with CheckPointClient(settings) as client:
         dataset = collect_policy_snapshot(client, settings, run_paths)
+        api_call_count = client.api_call_count
+        api_commands = dict(client.command_counts)
     dataset_path = save_dataset(run_paths.normalized_dir / "dataset.json", dataset)
+    metrics_path = write_run_metrics(
+        run_paths.reports_dir / "metrics.json",
+        build_run_metrics(
+            command="collect",
+            run_id=dataset.run_id,
+            settings=settings,
+            duration_seconds=perf_counter() - started_at,
+            api_call_count=api_call_count,
+            api_commands=api_commands,
+            rules_count=len(dataset.rules),
+            warnings_count=len(dataset.warnings),
+        ),
+    )
     _write_provenance(
         settings,
         run_paths.reports_dir,
         "collect",
         dataset.run_id,
-        artifacts={"dataset_json": dataset_path},
+        artifacts={"dataset_json": dataset_path, "metrics_json": metrics_path},
     )
     typer.echo(f"Collected dataset: {dataset_path}")
 
@@ -106,6 +135,7 @@ def analyze(
 ) -> None:
     """Analyze a normalized dataset and emit findings JSON/CSV."""
     configure_logging()
+    started_at = perf_counter()
     settings = _load_config(config, env_file, None, None, None, require_credentials=False)
     if dataset_path is None:
         dataset_path = latest_file(settings.collection.output_dir / "normalized", "*/dataset.json")
@@ -113,18 +143,26 @@ def analyze(
     findings = analyze_dataset(dataset, settings.analysis)
     reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
     reports_dir.mkdir(parents=True, exist_ok=True)
-    findings_path = _write_findings_bundle(findings, reports_dir, settings, dataset)
+    artifacts = _write_findings_bundle(findings, reports_dir, settings, dataset)
+    findings_path = artifacts.get("findings_json", reports_dir / "findings.json")
+    metrics_path = write_run_metrics(
+        reports_dir / "metrics.json",
+        build_run_metrics(
+            command="analyze",
+            run_id=dataset.run_id,
+            settings=settings,
+            duration_seconds=perf_counter() - started_at,
+            findings_count=len(findings),
+            rules_count=len(dataset.rules),
+            warnings_count=len(dataset.warnings),
+        ),
+    )
     _write_provenance(
         settings,
         reports_dir,
         "analyze",
         dataset.run_id,
-        artifacts={
-            "dataset_json": dataset_path,
-            "findings_json": reports_dir / "findings.json",
-            "findings_csv": reports_dir / "findings.csv",
-            "report_html": reports_dir / "report.html",
-        },
+        artifacts={"dataset_json": dataset_path, "metrics_json": metrics_path, **artifacts},
     )
     typer.echo(f"Findings written: {findings_path}")
 
@@ -138,6 +176,7 @@ def report(
 ) -> None:
     """Generate the HTML report from a dataset and findings."""
     configure_logging()
+    started_at = perf_counter()
     settings = _load_config(config, env_file, None, None, None, require_credentials=False)
     if dataset_path is None:
         dataset_path = latest_file(settings.collection.output_dir / "normalized", "*/dataset.json")
@@ -152,6 +191,18 @@ def report(
         settings=settings,
     )
     reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
+    metrics_path = write_run_metrics(
+        reports_dir / "metrics.json",
+        build_run_metrics(
+            command="report",
+            run_id=dataset.run_id,
+            settings=settings,
+            duration_seconds=perf_counter() - started_at,
+            findings_count=len(findings),
+            rules_count=len(dataset.rules),
+            warnings_count=len(dataset.warnings),
+        ),
+    )
     _write_provenance(
         settings,
         reports_dir,
@@ -161,6 +212,7 @@ def report(
             "dataset_json": dataset_path,
             "findings_json": findings_path,
             "report_html": reports_dir / "report.html",
+            "metrics_json": metrics_path,
         },
     )
     typer.echo(f"Report written: {report_path}")
@@ -176,6 +228,7 @@ def full_run(
 ) -> None:
     """Run collection, analysis, and reporting in sequence."""
     configure_logging()
+    started_at = perf_counter()
     settings = _load_config(config, env_file, ca_bundle, insecure, package)
     run_paths = build_run_paths(settings.collection.output_dir)
     with CheckPointClient(settings) as client:
@@ -188,18 +241,29 @@ def full_run(
                 dataset.log_evidence.update(collect_logs_for_rule_uids(client, settings, run_paths, shortlist))
                 save_dataset(run_paths.normalized_dir / "dataset.json", dataset)
                 findings = analyze_dataset(dataset, settings.analysis)
-    _write_findings_bundle(findings, run_paths.reports_dir, settings, dataset)
+        api_call_count = client.api_call_count
+        api_commands = dict(client.command_counts)
+    artifacts = _write_findings_bundle(findings, run_paths.reports_dir, settings, dataset)
+    metrics_path = write_run_metrics(
+        run_paths.reports_dir / "metrics.json",
+        build_run_metrics(
+            command="full-run",
+            run_id=dataset.run_id,
+            settings=settings,
+            duration_seconds=perf_counter() - started_at,
+            api_call_count=api_call_count,
+            api_commands=api_commands,
+            findings_count=len(findings),
+            rules_count=len(dataset.rules),
+            warnings_count=len(dataset.warnings),
+        ),
+    )
     _write_provenance(
         settings,
         run_paths.reports_dir,
         "full-run",
         dataset.run_id,
-        artifacts={
-            "dataset_json": run_paths.normalized_dir / "dataset.json",
-            "findings_json": run_paths.reports_dir / "findings.json",
-            "findings_csv": run_paths.reports_dir / "findings.csv",
-            "report_html": run_paths.reports_dir / "report.html",
-        },
+        artifacts={"dataset_json": run_paths.normalized_dir / "dataset.json", "metrics_json": metrics_path, **artifacts},
     )
     typer.echo(f"Full run completed: {dataset_path}")
 

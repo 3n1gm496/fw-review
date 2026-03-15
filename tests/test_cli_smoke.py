@@ -64,6 +64,10 @@ def test_cli_analyze_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert findings_file.exists()
     provenance_file = tmp_path / "output" / "reports" / "smoke-analyze" / "provenance.json"
     assert provenance_file.exists()
+    metrics_file = tmp_path / "output" / "reports" / "smoke-analyze" / "metrics.json"
+    assert metrics_file.exists()
+    metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
+    assert metrics["command"] == "analyze"
 
 
 def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
@@ -92,3 +96,5 @@ def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert report_file.exists()
     provenance_file = tmp_path / "output" / "reports" / "smoke-report" / "provenance.json"
     assert provenance_file.exists()
+    metrics_file = tmp_path / "output" / "reports" / "smoke-report" / "metrics.json"
+    assert metrics_file.exists()

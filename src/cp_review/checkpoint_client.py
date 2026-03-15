@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from collections import Counter
 from typing import Any
 
 import httpx
@@ -40,6 +41,8 @@ class CheckPointClient:
             headers={"Content-Type": "application/json"},
         )
         self.sid: str | None = None
+        self.api_call_count: int = 0
+        self.command_counts: Counter[str] = Counter()
 
     def login(self) -> str:
         """Authenticate and return the in-memory session ID."""
@@ -97,6 +100,8 @@ class CheckPointClient:
         )
 
         def do_request() -> dict[str, Any]:
+            self.api_call_count += 1
+            self.command_counts[command] += 1
             LOGGER.info(
                 "Calling Check Point API",
                 extra={"event_data": {"command": command, "payload_keys": sorted(payload.keys())}},

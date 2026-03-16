@@ -66,9 +66,17 @@ def _write_findings_bundle(findings, reports_dir: Path, settings, dataset) -> di
     return artifacts
 
 
-def _write_provenance(settings, reports_dir: Path, command: str, run_id: str, artifacts: dict[str, Path]) -> Path:
+def _write_provenance(
+    settings,
+    reports_dir: Path,
+    command: str,
+    run_id: str,
+    artifacts: dict[str, Path],
+    *,
+    filename: str = "provenance.json",
+) -> Path:
     return write_provenance_file(
-        reports_dir / "provenance.json",
+        reports_dir / filename,
         command=command,
         run_id=run_id,
         settings=settings,
@@ -97,7 +105,10 @@ def _load_findings_file(path: Path) -> list[dict[str, Any]]:
 
 
 def _latest_two_findings_files(reports_root: Path) -> tuple[Path, Path]:
-    matches = sorted(reports_root.glob("*/findings.json"), key=lambda item: item.stat().st_mtime)
+    matches = sorted(
+        reports_root.glob("*/findings.json"),
+        key=lambda item: (item.parent.name, item.stat().st_mtime),
+    )
     if len(matches) < 2:
         raise CpReviewError(f"Need at least two findings files in {reports_root} to run compare")
     return matches[-2], matches[-1]
@@ -314,7 +325,7 @@ def compare(
     output_path.write_text(json.dumps(drift, indent=2, sort_keys=True), encoding="utf-8")
 
     metrics_path = write_run_metrics(
-        reports_dir / "metrics.json",
+        reports_dir / "drift.metrics.json",
         build_run_metrics(
             command="compare",
             run_id=current_run_id,
@@ -334,6 +345,7 @@ def compare(
             "drift_json": output_path,
             "metrics_json": metrics_path,
         },
+        filename="drift.provenance.json",
     )
     typer.echo(f"Drift report written: {output_path}")
 
@@ -343,6 +355,7 @@ def doctor(
     config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
     env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
     check_api: bool = typer.Option(False, "--check-api", help="Also validate API login and a read-only call."),
+    offline: bool = typer.Option(False, "--offline", help="Allow missing API credentials for offline-only usage."),
     ca_bundle: str | None = typer.Option(None, "--ca-bundle", help="Override CA bundle path."),
     insecure: bool | None = typer.Option(None, "--insecure/--secure", help="Lab-only TLS override."),
 ) -> None:
@@ -357,7 +370,7 @@ def doctor(
         require_credentials=check_api,
     )
 
-    report = run_local_readiness_checks(settings)
+    report = run_local_readiness_checks(settings, require_credentials=not offline)
     checks = list(report["checks"])
 
     if check_api:

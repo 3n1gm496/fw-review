@@ -162,6 +162,9 @@ def test_cli_compare_generates_drift_report(monkeypatch, tmp_path: Path):
     assert drift_path.exists()
     drift = json.loads(drift_path.read_text(encoding="utf-8"))
     assert drift["new_count"] == 1
+    run_reports_dir = tmp_path / "output" / "reports" / current_findings.parent.name
+    assert (run_reports_dir / "drift.metrics.json").exists()
+    assert (run_reports_dir / "drift.provenance.json").exists()
 
 
 def test_cli_doctor_runs_local_checks(monkeypatch, tmp_path: Path):
@@ -181,3 +184,38 @@ def test_cli_doctor_runs_local_checks(monkeypatch, tmp_path: Path):
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["summary"] == "ok"
+
+
+def test_cli_doctor_fails_without_credentials_by_default(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=False)
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert result.exit_code == 1
+
+
+def test_cli_doctor_allows_missing_credentials_in_offline_mode(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=False)
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+            "--offline",
+        ],
+    )
+
+    assert result.exit_code == 0

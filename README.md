@@ -37,6 +37,8 @@ cp-review compare --config config/settings.yaml
 cp-review doctor --config config/settings.yaml
 # optional real API check
 cp-review doctor --config config/settings.yaml --check-api
+# offline preflight only (no credentials required)
+cp-review doctor --config config/settings.yaml --offline
 ```
 
 ## Enterprise quality workflow
@@ -64,6 +66,8 @@ make benchmark
 - `output/reports/<run_id>/findings.csv`: CSV export for technical review
 - `output/reports/<run_id>/report.html`: HTML report
 - `output/reports/<run_id>/drift.json`: finding drift summary from `compare`
+- `output/reports/<run_id>/drift.metrics.json`: drift command metrics
+- `output/reports/<run_id>/drift.provenance.json`: drift command provenance
 
 ## Caveats
 

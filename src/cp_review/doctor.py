@@ -9,7 +9,7 @@ from typing import Any
 from cp_review.config import AppConfig
 
 
-def run_local_readiness_checks(settings: AppConfig) -> dict[str, Any]:
+def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool = True) -> dict[str, Any]:
     """Run local non-network checks and return a structured report."""
     checks: list[dict[str, str]] = []
 
@@ -46,7 +46,7 @@ def run_local_readiness_checks(settings: AppConfig) -> dict[str, Any]:
         checks.append(
             {
                 "name": "credentials_env",
-                "status": "warn",
+                "status": "fail" if require_credentials else "warn",
                 "details": f"Missing one or both env vars: {settings.management.username_env}, {settings.management.password_env}",
             }
         )

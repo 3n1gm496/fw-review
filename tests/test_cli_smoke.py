@@ -53,6 +53,11 @@ def _fixture_rulebase() -> dict[str, object]:
     return json.loads(fixture_path.read_text(encoding="utf-8"))
 
 
+def _fixture_complex_rulebase() -> dict[str, object]:
+    fixture_path = Path(__file__).parent / "fixtures" / "complex_rulebase_page.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
 class FakeCheckPointClient:
     def __init__(self, settings) -> None:
         self.settings = settings
@@ -114,6 +119,42 @@ class WarningCheckPointClient(FakeCheckPointClient):
         if command == "show-logs":
             raise CheckPointApiError("show-logs failed")
         return super().call_api(command, payload)
+
+
+class MultiPackageE2ECheckPointClient(FakeCheckPointClient):
+    def __init__(self, settings) -> None:
+        super().__init__(settings)
+        self._standard_rulebase = _fixture_rulebase()
+        self._remote_rulebase = _fixture_complex_rulebase()
+
+    def call_api(self, command: str, payload: dict[str, object]) -> dict[str, object]:
+        self.api_call_count += 1
+        self.command_counts[command] = self.command_counts.get(command, 0) + 1
+        if command == "show-packages":
+            if payload["offset"] == 0:
+                return {
+                    "packages": [
+                        {"name": "Standard", "access-layers": [{"name": "Network", "type": "access-layer"}]},
+                        {"name": "Remote", "access-layers": ["Remote-Layer"]},
+                    ],
+                    "total": 3,
+                }
+            return {
+                "packages": [
+                    {"name": "BrokenPackage", "access-layers": []},
+                ],
+                "total": 3,
+            }
+        if command == "show-access-rulebase":
+            if payload.get("name") == "Remote-Layer":
+                return self._remote_rulebase
+            return self._standard_rulebase
+        if command == "show-object":
+            uid = str(payload["uid"])
+            return {"uid": uid, "name": f"resolved-{uid}", "type": "host"}
+        if command == "show-logs":
+            return {"logs-count": 2, "logs": [{"query": payload["query"], "action": "Accept"}]}
+        raise AssertionError(f"Unexpected command: {command}")
 
 
 def test_cli_analyze_runs_without_credentials(monkeypatch, tmp_path: Path):
@@ -314,6 +355,40 @@ def test_cli_full_run_persists_partial_collection_warnings_in_manifest(monkeypat
     codes = {item["code"] for item in manifest["warnings"]}
     assert "OBJECT_LOOKUP_FAILED" in codes
     assert "LOG_QUERY_FAILED" in codes
+
+
+def test_cli_full_run_end_to_end_multi_package_fixture(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    monkeypatch.setattr("cp_review.cli.CheckPointClient", MultiPackageE2ECheckPointClient)
+    config_path = _write_settings(tmp_path, html_report=True)
+
+    result = RUNNER.invoke(app, ["full-run", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    report_dir = next((tmp_path / "output" / "reports").glob("*"))
+    run_id = report_dir.name
+    dataset = json.loads((tmp_path / "output" / "normalized" / run_id / "dataset.json").read_text(encoding="utf-8"))
+    findings = json.loads((report_dir / "findings.json").read_text(encoding="utf-8"))
+    manifest = json.loads((report_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    html_report = (report_dir / "report.html").read_text(encoding="utf-8")
+
+    assert dataset["packages"] == ["Standard", "Remote", "BrokenPackage"]
+    assert len(dataset["rules"]) == 5
+    warning_codes = {item["code"] for item in dataset["warnings"]}
+    assert {"INLINE_LAYER_PRESENT", "UNSUPPORTED_RULEBASE_NODE", "NO_ACCESS_LAYERS"} <= warning_codes
+    finding_types = {item["finding_type"] for item in findings}
+    assert {"broad_allow", "high_risk_broad_usage"} <= finding_types
+    assert manifest["summary"]["rules_count"] == 5
+    assert manifest["summary"]["warnings_count"] == len(dataset["warnings"])
+    assert manifest["summary"]["findings_count"] == len(findings)
+    assert "BrokenPackage" in html_report
+    assert "Inline-Exceptions" in html_report
+
+    validate_result = RUNNER.invoke(app, ["validate-run", "--config", str(config_path), "--run-id", run_id])
+    assert validate_result.exit_code == 0
+    validate_payload = json.loads(validate_result.stdout)
+    assert validate_payload["summary"] == "ok"
 
 
 def test_cli_doctor_runs_local_checks(monkeypatch, tmp_path: Path):

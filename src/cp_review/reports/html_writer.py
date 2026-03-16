@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections import Counter
 from datetime import UTC, datetime
 from pathlib import Path
@@ -28,6 +29,7 @@ def write_html_report(path: Path, *, findings: list[FindingRecord | dict[str, An
         trim_blocks=True,
         lstrip_blocks=True,
     )
+    env.policies["json.dumps_function"] = lambda value, **kwargs: json.dumps(value, default=str, **kwargs)
     template = env.get_template("report.html.j2")
     html = template.render(
         generated_at=datetime.now(UTC),

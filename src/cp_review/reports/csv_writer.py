@@ -34,6 +34,6 @@ def write_findings_csv(path: Path, findings: Sequence[FindingRecord | dict[str, 
         writer.writeheader()
         for item in findings:
             row: dict[str, Any] = item.model_dump(mode="json") if isinstance(item, FindingRecord) else dict(item)
-            row["evidence"] = json.dumps(row.get("evidence", {}), sort_keys=True)
+            row["evidence"] = json.dumps(row.get("evidence", {}), sort_keys=True, default=str)
             writer.writerow({field: row.get(field, "") for field in FIELDS})
     return path

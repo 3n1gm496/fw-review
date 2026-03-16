@@ -14,5 +14,5 @@ def write_findings_json(path: Path, findings: Sequence[FindingRecord | dict[str,
     """Write findings to JSON."""
     payload = [item.model_dump(mode="json") if isinstance(item, FindingRecord) else item for item in findings]
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True, default=str), encoding="utf-8")
     return path

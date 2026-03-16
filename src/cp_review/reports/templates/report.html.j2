@@ -43,6 +43,37 @@
   </div>
 
   <div class="section">
+    <h2>Packages Reviewed</h2>
+    <p>
+      {% for package_name in dataset.packages %}
+      <span class="pill">{{ package_name }}</span>
+      {% endfor %}
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Collection Warnings</h2>
+    {% if dataset.warnings %}
+    <table>
+      <thead><tr><th>Code</th><th>Package</th><th>Layer</th><th>Rule/Object</th><th>Message</th></tr></thead>
+      <tbody>
+      {% for warning in dataset.warnings %}
+        <tr>
+          <td>{{ warning.code }}</td>
+          <td>{{ warning.package_name or "" }}</td>
+          <td>{{ warning.layer_name or "" }}</td>
+          <td>{{ warning.rule_uid or warning.object_uid or "" }}</td>
+          <td>{{ warning.message }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>No collection warnings recorded.</p>
+    {% endif %}
+  </div>
+
+  <div class="section">
     <h2>Top high-risk rules</h2>
     <table>
       <thead><tr><th>Rule</th><th>Type</th><th>Severity</th><th>Risk</th><th>Action</th></tr></thead>

@@ -16,6 +16,6 @@ def write_findings_jsonl(path: Path, findings: Sequence[FindingRecord | dict[str
     with path.open("w", encoding="utf-8") as handle:
         for item in findings:
             payload = item.model_dump(mode="json") if isinstance(item, FindingRecord) else dict(item)
-            handle.write(json.dumps(payload, sort_keys=True))
+            handle.write(json.dumps(payload, sort_keys=True, default=str))
             handle.write("\n")
     return path

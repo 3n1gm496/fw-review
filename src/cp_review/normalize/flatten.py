@@ -149,7 +149,10 @@ def _flatten_nodes(
             warnings.append(
                 DatasetWarning(
                     code="INLINE_LAYER_PRESENT",
-                    message="Rule references an inline layer and was preserved with a marker for manual review.",
+                    message=(
+                        f"Rule references inline layer {rule.inline_layer} and was preserved with a marker "
+                        "for manual review."
+                    ),
                     package_name=package_name,
                     layer_name=layer.get("name"),
                     rule_uid=rule.rule_uid,

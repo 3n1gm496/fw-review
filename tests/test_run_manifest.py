@@ -43,3 +43,23 @@ def test_write_run_manifest_includes_summary_and_artifacts(tmp_path: Path):
     assert payload["status"] == "completed"
     assert payload["summary"]["findings_count"] == 3
     assert payload["artifacts"][0]["name"] == "artifact_json"
+
+
+def test_write_run_manifest_includes_structured_warnings(tmp_path: Path):
+    settings = _settings(tmp_path)
+    artifact = tmp_path / "artifact.json"
+    artifact.write_text("{}", encoding="utf-8")
+    manifest_path = tmp_path / "run-manifest.json"
+
+    write_run_manifest(
+        manifest_path,
+        command="collect",
+        run_id="run-123",
+        settings=settings,
+        artifacts={"artifact_json": artifact},
+        warnings=[{"code": "OBJECT_LOOKUP_FAILED", "message": "failed", "object_uid": "obj-1"}],
+    )
+
+    payload = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert payload["warnings"][0]["code"] == "OBJECT_LOOKUP_FAILED"
+    assert payload["warnings"][0]["object_uid"] == "obj-1"

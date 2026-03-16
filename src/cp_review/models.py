@@ -68,6 +68,7 @@ class DatasetWarning(BaseModel):
     package_name: str | None = None
     layer_name: str | None = None
     rule_uid: str | None = None
+    object_uid: str | None = None
 
 
 class NormalizedDataset(BaseModel):

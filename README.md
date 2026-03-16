@@ -71,6 +71,7 @@ make benchmark
 - `output/reports/<run_id>/drift.provenance.json`: drift command provenance
 - `output/reports/<run_id>/run-manifest.json`: run completeness manifest for `collect`/`analyze`/`report`/`full-run`
 - `cp-review validate-run` verifies manifest integrity, artifact hashes, and summary consistency for a completed run
+- partial `show-object` and `show-logs` failures are preserved as structured warnings in the dataset and run manifest instead of being silently lost
 
 ## Caveats
 

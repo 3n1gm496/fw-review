@@ -191,6 +191,7 @@ def collect(
             "rules_count": len(dataset.rules),
             "warnings_count": len(dataset.warnings),
         },
+        warnings=dataset.warnings,
     )
     typer.echo(f"Collected dataset: {dataset_path}")
 
@@ -248,6 +249,7 @@ def analyze(
             "rules_count": len(dataset.rules),
             "warnings_count": len(dataset.warnings),
         },
+        warnings=dataset.warnings,
     )
     typer.echo(f"Findings written: {findings_path}")
 
@@ -316,6 +318,7 @@ def report(
             "rules_count": len(dataset.rules),
             "warnings_count": len(dataset.warnings),
         },
+        warnings=dataset.warnings,
     )
     typer.echo(f"Report written: {report_path}")
 
@@ -340,7 +343,9 @@ def full_run(
         if settings.collection.collect_logs_for_shortlist:
             shortlist = _collect_shortlist_rule_uids(findings, settings.collection.shortlist_log_limit)
             if shortlist:
-                dataset.log_evidence.update(collect_logs_for_rule_uids(client, settings, run_paths, shortlist))
+                log_evidence, log_warnings = collect_logs_for_rule_uids(client, settings, run_paths, shortlist)
+                dataset.log_evidence.update(log_evidence)
+                dataset.warnings.extend(log_warnings)
                 save_dataset(run_paths.normalized_dir / "dataset.json", dataset)
                 findings = analyze_dataset(dataset, settings.analysis)
         api_call_count = client.api_call_count
@@ -384,6 +389,7 @@ def full_run(
             "rules_count": len(dataset.rules),
             "warnings_count": len(dataset.warnings),
         },
+        warnings=dataset.warnings,
     )
     typer.echo(f"Full run completed: {dataset_path}")
 

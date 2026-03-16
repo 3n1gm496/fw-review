@@ -50,6 +50,7 @@ def validate_run_manifest(path: Path) -> dict[str, Any]:
     command = str(manifest.get("command", "unknown"))
     run_id = str(manifest.get("run_id", "unknown"))
     summary = manifest.get("summary", {})
+    manifest_warnings = manifest.get("warnings", [])
     checks: list[dict[str, str]] = []
 
     checks.append(
@@ -136,6 +137,14 @@ def validate_run_manifest(path: Path) -> dict[str, Any]:
                         "details": f"summary={warnings_count} dataset={len(dataset.warnings)}",
                     }
                 )
+                if isinstance(manifest_warnings, list):
+                    checks.append(
+                        {
+                            "name": "manifest_warnings_count",
+                            "status": _status(int(warnings_count) == len(manifest_warnings)),
+                            "details": f"summary={warnings_count} manifest={len(manifest_warnings)}",
+                        }
+                    )
 
     findings_artifact_name = "findings_json" if "findings_json" in artifacts else "current_findings_json"
     findings_artifact = artifacts.get(findings_artifact_name)

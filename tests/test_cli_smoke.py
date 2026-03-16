@@ -84,6 +84,38 @@ class FakeCheckPointClient:
         raise AssertionError(f"Unexpected command: {command}")
 
 
+class WarningCheckPointClient(FakeCheckPointClient):
+    def __init__(self, settings) -> None:
+        super().__init__(settings)
+        self._rulebase = {
+            "rulebase": [
+                {
+                    "type": "access-rule",
+                    "uid": "rule-warning",
+                    "rule-number": 1,
+                    "name": "Broad Rule",
+                    "enabled": True,
+                    "action": {"name": "Accept"},
+                    "source": [{"uid": "obj-missing", "name": "obj-missing"}],
+                    "destination": [{"uid": "dst-any", "name": "Any", "type": "CpmiAnyObject"}],
+                    "service": [{"uid": "svc-any", "name": "Any", "type": "service-any"}],
+                    "track": {"name": "None"},
+                    "comments": "",
+                }
+            ],
+            "total": 1,
+        }
+
+    def call_api(self, command: str, payload: dict[str, object]) -> dict[str, object]:
+        from cp_review.exceptions import CheckPointApiError
+
+        if command == "show-object":
+            raise CheckPointApiError("show-object failed")
+        if command == "show-logs":
+            raise CheckPointApiError("show-logs failed")
+        return super().call_api(command, payload)
+
+
 def test_cli_analyze_runs_without_credentials(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
     monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
@@ -266,6 +298,22 @@ def test_cli_full_run_keeps_canonical_findings_when_json_disabled(monkeypatch, t
     assert (report_dir / "metrics.json").exists()
     assert (report_dir / "provenance.json").exists()
     assert (report_dir / "run-manifest.json").exists()
+
+
+def test_cli_full_run_persists_partial_collection_warnings_in_manifest(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    monkeypatch.setattr("cp_review.cli.CheckPointClient", WarningCheckPointClient)
+    config_path = _write_settings(tmp_path, html_report=False)
+
+    result = RUNNER.invoke(app, ["full-run", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    report_dir = next((tmp_path / "output" / "reports").glob("*"))
+    manifest = json.loads((report_dir / "run-manifest.json").read_text(encoding="utf-8"))
+    codes = {item["code"] for item in manifest["warnings"]}
+    assert "OBJECT_LOOKUP_FAILED" in codes
+    assert "LOG_QUERY_FAILED" in codes
 
 
 def test_cli_doctor_runs_local_checks(monkeypatch, tmp_path: Path):

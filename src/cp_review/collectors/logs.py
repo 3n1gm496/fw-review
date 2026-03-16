@@ -9,7 +9,7 @@ from typing import Any
 from cp_review.collectors import save_raw_json
 from cp_review.config import AppConfig, RunPaths
 from cp_review.exceptions import CheckPointApiError
-from cp_review.models import LogEvidence
+from cp_review.models import DatasetWarning, LogEvidence
 
 LOGGER = logging.getLogger(__name__)
 
@@ -28,9 +28,10 @@ def collect_logs_for_rule_uids(
     settings: AppConfig,
     run_paths: RunPaths,
     rule_uids: list[str],
-) -> dict[str, LogEvidence]:
+) -> tuple[dict[str, LogEvidence], list[DatasetWarning]]:
     """Collect targeted log evidence for shortlisted rule UIDs."""
     evidence: dict[str, LogEvidence] = {}
+    warnings: list[DatasetWarning] = []
     for rule_uid in rule_uids:
         payload = _build_log_payload(rule_uid, settings.collection.log_days)
         try:
@@ -39,6 +40,13 @@ def collect_logs_for_rule_uids(
             LOGGER.warning(
                 "Targeted log collection failed",
                 extra={"event_data": {"rule_uid": rule_uid, "error": str(exc)}},
+            )
+            warnings.append(
+                DatasetWarning(
+                    code="LOG_QUERY_FAILED",
+                    message=f"show-logs failed for shortlisted rule {rule_uid}: {exc}",
+                    rule_uid=rule_uid,
+                )
             )
             continue
         if settings.collection.save_raw:
@@ -50,4 +58,4 @@ def collect_logs_for_rule_uids(
             sample_logs=list(logs)[:5],
             collected_at=datetime.now(UTC),
         )
-    return evidence
+    return evidence, warnings

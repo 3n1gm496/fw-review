@@ -78,7 +78,8 @@ def collect_policy_snapshot(client: Any, settings: AppConfig, run_paths: RunPath
             all_rules.extend(rules)
             warnings.extend(layer_warnings)
 
-    object_cache = collect_referenced_objects(client, settings, run_paths, all_rules)
+    object_cache, object_warnings = collect_referenced_objects(client, settings, run_paths, all_rules)
+    warnings.extend(object_warnings)
     enriched_rules = enrich_rules(all_rules, object_cache)
     return NormalizedDataset(
         generated_at=datetime.now(UTC),

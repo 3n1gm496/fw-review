@@ -68,6 +68,7 @@ def test_validate_run_manifest_passes_for_consistent_analyze_run(tmp_path: Path)
     report = validate_run_manifest(manifest_path)
 
     assert report["summary"] == "ok"
+    assert any(check["name"] == "manifest_warnings_count" and check["status"] == "ok" for check in report["checks"])
 
 
 def test_validate_run_manifest_fails_on_hash_mismatch(tmp_path: Path):

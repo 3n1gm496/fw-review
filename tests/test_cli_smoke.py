@@ -98,3 +98,67 @@ def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert provenance_file.exists()
     metrics_file = tmp_path / "output" / "reports" / "smoke-report" / "metrics.json"
     assert metrics_file.exists()
+
+
+def test_cli_compare_generates_drift_report(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=False)
+    previous_findings = tmp_path / "previous.json"
+    current_findings = tmp_path / "current.json"
+    previous_findings.write_text(
+        json.dumps(
+            [
+                {
+                    "finding_type": "unused_rules",
+                    "rule_uid": "r1",
+                    "package_name": "P",
+                    "layer_name": "L",
+                    "rule_number": 1,
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    current_findings.write_text(
+        json.dumps(
+            [
+                {
+                    "finding_type": "unused_rules",
+                    "rule_uid": "r1",
+                    "package_name": "P",
+                    "layer_name": "L",
+                    "rule_number": 1,
+                },
+                {
+                    "finding_type": "no_log_rules",
+                    "rule_uid": "r2",
+                    "package_name": "P",
+                    "layer_name": "L",
+                    "rule_number": 2,
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+    drift_path = tmp_path / "drift.json"
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "compare",
+            "--config",
+            str(config_path),
+            "--previous-findings",
+            str(previous_findings),
+            "--current-findings",
+            str(current_findings),
+            "--output-path",
+            str(drift_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert drift_path.exists()
+    drift = json.loads(drift_path.read_text(encoding="utf-8"))
+    assert drift["new_count"] == 1

@@ -6,6 +6,7 @@ import json
 import logging
 from pathlib import Path
 from time import perf_counter
+from typing import Any
 
 import typer
 
@@ -13,6 +14,7 @@ from cp_review.analyzers import analyze_dataset
 from cp_review.checkpoint_client import CheckPointClient
 from cp_review.collectors.logs import collect_logs_for_rule_uids
 from cp_review.collectors.packages import collect_policy_snapshot
+from cp_review.compare import compare_findings
 from cp_review.config import apply_cli_overrides, build_run_paths, latest_file, load_settings
 from cp_review.exceptions import CpReviewError
 from cp_review.logging_conf import configure_logging
@@ -84,6 +86,20 @@ def _collect_shortlist_rule_uids(findings, limit: int) -> list[str]:
         if len(shortlist) >= limit:
             break
     return shortlist
+
+
+def _load_findings_file(path: Path) -> list[dict[str, Any]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, list):
+        raise CpReviewError(f"Findings file does not contain a list: {path}")
+    return [dict(item) for item in payload if isinstance(item, dict)]
+
+
+def _latest_two_findings_files(reports_root: Path) -> tuple[Path, Path]:
+    matches = sorted(reports_root.glob("*/findings.json"), key=lambda item: item.stat().st_mtime)
+    if len(matches) < 2:
+        raise CpReviewError(f"Need at least two findings files in {reports_root} to run compare")
+    return matches[-2], matches[-1]
 
 
 @app.command()
@@ -266,6 +282,59 @@ def full_run(
         artifacts={"dataset_json": run_paths.normalized_dir / "dataset.json", "metrics_json": metrics_path, **artifacts},
     )
     typer.echo(f"Full run completed: {dataset_path}")
+
+
+@app.command()
+def compare(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    previous_findings: Path | None = typer.Option(None, "--previous-findings", dir_okay=False, help="Older findings JSON."),
+    current_findings: Path | None = typer.Option(None, "--current-findings", dir_okay=False, help="Newer findings JSON."),
+    output_path: Path | None = typer.Option(None, "--output-path", dir_okay=False, help="Drift output JSON path."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Compare two findings sets and generate a drift report."""
+    configure_logging()
+    started_at = perf_counter()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+
+    if previous_findings is None or current_findings is None:
+        auto_previous, auto_current = _latest_two_findings_files(settings.collection.output_dir / "reports")
+        previous_findings = previous_findings or auto_previous
+        current_findings = current_findings or auto_current
+
+    previous = _load_findings_file(previous_findings)
+    current = _load_findings_file(current_findings)
+    drift = compare_findings(previous, current)
+
+    current_run_id = current_findings.parent.name
+    reports_dir = settings.collection.output_dir / "reports" / current_run_id
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_path or reports_dir / "drift.json"
+    output_path.write_text(json.dumps(drift, indent=2, sort_keys=True), encoding="utf-8")
+
+    metrics_path = write_run_metrics(
+        reports_dir / "metrics.json",
+        build_run_metrics(
+            command="compare",
+            run_id=current_run_id,
+            settings=settings,
+            duration_seconds=perf_counter() - started_at,
+            findings_count=drift["current_count"],
+        ),
+    )
+    _write_provenance(
+        settings,
+        reports_dir,
+        "compare",
+        current_run_id,
+        artifacts={
+            "previous_findings_json": previous_findings,
+            "current_findings_json": current_findings,
+            "drift_json": output_path,
+            "metrics_json": metrics_path,
+        },
+    )
+    typer.echo(f"Drift report written: {output_path}")
 
 
 def main() -> None:

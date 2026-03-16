@@ -33,6 +33,7 @@ cp-review collect --config config/settings.yaml
 cp-review analyze --config config/settings.yaml
 cp-review report --config config/settings.yaml
 cp-review full-run --config config/settings.yaml
+cp-review compare --config config/settings.yaml
 ```
 
 ## Enterprise quality workflow
@@ -59,6 +60,7 @@ make benchmark
 - `output/reports/<run_id>/findings.json`: analyzer findings
 - `output/reports/<run_id>/findings.csv`: CSV export for technical review
 - `output/reports/<run_id>/report.html`: HTML report
+- `output/reports/<run_id>/drift.json`: finding drift summary from `compare`
 
 ## Caveats
 

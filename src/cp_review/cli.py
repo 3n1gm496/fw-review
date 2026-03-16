@@ -25,6 +25,7 @@ from cp_review.reports.csv_writer import write_findings_csv
 from cp_review.reports.html_writer import write_html_report
 from cp_review.reports.json_writer import write_findings_json
 from cp_review.reports.jsonl_writer import write_findings_jsonl
+from cp_review.run_manifest import write_run_manifest
 from cp_review.run_metrics import build_run_metrics, write_run_metrics
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
@@ -51,9 +52,9 @@ def _write_findings_bundle(findings, reports_dir: Path, settings, dataset) -> di
     report_html = reports_dir / "report.html"
     findings_jsonl = reports_dir / settings.reporting.siem_jsonl_filename
 
-    if settings.reporting.json_findings:
-        write_findings_json(findings_json, findings)
-        artifacts["findings_json"] = findings_json
+    # Keep a canonical findings artifact for downstream commands and recovery.
+    write_findings_json(findings_json, findings)
+    artifacts["findings_json"] = findings_json
     if settings.reporting.csv_findings:
         write_findings_csv(findings_csv, findings)
         artifacts["findings_csv"] = findings_csv
@@ -114,6 +115,21 @@ def _latest_two_findings_files(reports_root: Path) -> tuple[Path, Path]:
     return matches[-2], matches[-1]
 
 
+def _load_findings_for_report(dataset, findings_path: Path | None, settings, reports_dir: Path) -> tuple[list[Any], Path]:
+    if findings_path is not None:
+        findings = json.loads(findings_path.read_text(encoding="utf-8"))
+        return findings, findings_path
+
+    canonical_findings = reports_dir / "findings.json"
+    if canonical_findings.exists():
+        findings = json.loads(canonical_findings.read_text(encoding="utf-8"))
+        return findings, canonical_findings
+
+    findings = analyze_dataset(dataset, settings.analysis)
+    write_findings_json(canonical_findings, findings)
+    return findings, canonical_findings
+
+
 @app.command()
 def collect(
     config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
@@ -145,12 +161,28 @@ def collect(
             warnings_count=len(dataset.warnings),
         ),
     )
-    _write_provenance(
+    provenance_path = _write_provenance(
         settings,
         run_paths.reports_dir,
         "collect",
         dataset.run_id,
         artifacts={"dataset_json": dataset_path, "metrics_json": metrics_path},
+    )
+    write_run_manifest(
+        run_paths.reports_dir / "run-manifest.json",
+        command="collect",
+        run_id=dataset.run_id,
+        settings=settings,
+        artifacts={
+            "dataset_json": dataset_path,
+            "metrics_json": metrics_path,
+            "provenance_json": provenance_path,
+        },
+        summary={
+            "api_call_count": api_call_count,
+            "rules_count": len(dataset.rules),
+            "warnings_count": len(dataset.warnings),
+        },
     )
     typer.echo(f"Collected dataset: {dataset_path}")
 
@@ -185,12 +217,29 @@ def analyze(
             warnings_count=len(dataset.warnings),
         ),
     )
-    _write_provenance(
+    provenance_path = _write_provenance(
         settings,
         reports_dir,
         "analyze",
         dataset.run_id,
         artifacts={"dataset_json": dataset_path, "metrics_json": metrics_path, **artifacts},
+    )
+    write_run_manifest(
+        reports_dir / "run-manifest.json",
+        command="analyze",
+        run_id=dataset.run_id,
+        settings=settings,
+        artifacts={
+            "dataset_json": dataset_path,
+            "metrics_json": metrics_path,
+            "provenance_json": provenance_path,
+            **artifacts,
+        },
+        summary={
+            "findings_count": len(findings),
+            "rules_count": len(dataset.rules),
+            "warnings_count": len(dataset.warnings),
+        },
     )
     typer.echo(f"Findings written: {findings_path}")
 
@@ -209,16 +258,15 @@ def report(
     if dataset_path is None:
         dataset_path = latest_file(settings.collection.output_dir / "normalized", "*/dataset.json")
     dataset = load_dataset(dataset_path)
-    if findings_path is None:
-        findings_path = settings.collection.output_dir / "reports" / dataset.run_id / "findings.json"
-    findings = json.loads(findings_path.read_text(encoding="utf-8"))
+    reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    findings, findings_path = _load_findings_for_report(dataset, findings_path, settings, reports_dir)
     report_path = write_html_report(
-        settings.collection.output_dir / "reports" / dataset.run_id / "report.html",
+        reports_dir / "report.html",
         findings=findings,
         dataset=dataset,
         settings=settings,
     )
-    reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
     metrics_path = write_run_metrics(
         reports_dir / "metrics.json",
         build_run_metrics(
@@ -231,7 +279,7 @@ def report(
             warnings_count=len(dataset.warnings),
         ),
     )
-    _write_provenance(
+    provenance_path = _write_provenance(
         settings,
         reports_dir,
         "report",
@@ -241,6 +289,24 @@ def report(
             "findings_json": findings_path,
             "report_html": reports_dir / "report.html",
             "metrics_json": metrics_path,
+        },
+    )
+    write_run_manifest(
+        reports_dir / "run-manifest.json",
+        command="report",
+        run_id=dataset.run_id,
+        settings=settings,
+        artifacts={
+            "dataset_json": dataset_path,
+            "findings_json": findings_path,
+            "report_html": reports_dir / "report.html",
+            "metrics_json": metrics_path,
+            "provenance_json": provenance_path,
+        },
+        summary={
+            "findings_count": len(findings),
+            "rules_count": len(dataset.rules),
+            "warnings_count": len(dataset.warnings),
         },
     )
     typer.echo(f"Report written: {report_path}")
@@ -286,12 +352,30 @@ def full_run(
             warnings_count=len(dataset.warnings),
         ),
     )
-    _write_provenance(
+    provenance_path = _write_provenance(
         settings,
         run_paths.reports_dir,
         "full-run",
         dataset.run_id,
         artifacts={"dataset_json": run_paths.normalized_dir / "dataset.json", "metrics_json": metrics_path, **artifacts},
+    )
+    write_run_manifest(
+        run_paths.reports_dir / "run-manifest.json",
+        command="full-run",
+        run_id=dataset.run_id,
+        settings=settings,
+        artifacts={
+            "dataset_json": run_paths.normalized_dir / "dataset.json",
+            "metrics_json": metrics_path,
+            "provenance_json": provenance_path,
+            **artifacts,
+        },
+        summary={
+            "api_call_count": api_call_count,
+            "findings_count": len(findings),
+            "rules_count": len(dataset.rules),
+            "warnings_count": len(dataset.warnings),
+        },
     )
     typer.echo(f"Full run completed: {dataset_path}")
 
@@ -334,7 +418,7 @@ def compare(
             findings_count=drift["current_count"],
         ),
     )
-    _write_provenance(
+    provenance_path = _write_provenance(
         settings,
         reports_dir,
         "compare",
@@ -346,6 +430,25 @@ def compare(
             "metrics_json": metrics_path,
         },
         filename="drift.provenance.json",
+    )
+    write_run_manifest(
+        reports_dir / "drift.run-manifest.json",
+        command="compare",
+        run_id=current_run_id,
+        settings=settings,
+        artifacts={
+            "previous_findings_json": previous_findings,
+            "current_findings_json": current_findings,
+            "drift_json": output_path,
+            "metrics_json": metrics_path,
+            "provenance_json": provenance_path,
+        },
+        summary={
+            "current_count": drift["current_count"],
+            "new_count": drift["new_count"],
+            "persisting_count": drift["persisting_count"],
+            "resolved_count": drift["resolved_count"],
+        },
     )
     typer.echo(f"Drift report written: {output_path}")
 

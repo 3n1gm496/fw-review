@@ -221,8 +221,8 @@ def build_run_paths(output_dir: Path, run_id: str | None = None) -> RunPaths:
 
 
 def latest_file(directory: Path, pattern: str) -> Path:
-    """Return the most recently modified file matching a glob pattern."""
+    """Return the most recent matching file, preferring timestamped run directories."""
     matches = list(directory.glob(pattern))
     if not matches:
         raise ConfigurationError(f"No files matching {pattern!r} found in {directory}")
-    return max(matches, key=lambda path: path.stat().st_mtime)
+    return max(matches, key=lambda path: (path.parent.name, path.stat().st_mtime, path.name))

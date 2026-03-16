@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from cp_review.config import load_settings
+from cp_review.config import latest_file, load_settings
 from cp_review.exceptions import ConfigurationError
 
 
@@ -73,3 +73,20 @@ management:
 
     with pytest.raises(ConfigurationError):
         load_settings(config_path)
+
+
+def test_latest_file_prefers_timestamped_run_directory_over_mtime_skew(tmp_path):
+    normalized_dir = tmp_path / "normalized"
+    older_run = normalized_dir / "20260315T120000Z"
+    newer_run = normalized_dir / "20260316T120000Z"
+    older_run.mkdir(parents=True)
+    newer_run.mkdir(parents=True)
+    older_file = older_run / "dataset.json"
+    newer_file = newer_run / "dataset.json"
+    older_file.write_text("{}", encoding="utf-8")
+    newer_file.write_text("{}", encoding="utf-8")
+    older_file.touch()
+    newer_file.touch()
+    older_file.touch()
+
+    assert latest_file(normalized_dir, "*/dataset.json") == newer_file

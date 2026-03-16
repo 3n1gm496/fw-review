@@ -82,4 +82,6 @@ make benchmark
 - Output compatibility policy: `OUTPUT_COMPATIBILITY.md`
 - Release workflow: `RELEASE.md`
 - Provenance metadata: `output/reports/<run_id>/provenance.json`
+- Run manifest: `output/reports/<run_id>/run-manifest.json`
+- `findings.json` is always written as the canonical pipeline artifact, even if `reporting.json_findings` is disabled, so `report`, `compare`, and recovery flows remain functional.
 - Operational runbook: `RUNBOOK.md`

@@ -24,6 +24,24 @@ def _sha256_file(path: Path) -> str | None:
     return digest.hexdigest()
 
 
+def build_artifact_inventory(artifacts: dict[str, Path]) -> list[dict[str, str]]:
+    """Return hashed artifact metadata for files that exist on disk."""
+    artifact_items: list[dict[str, str]] = []
+    for name, artifact_path in artifacts.items():
+        file_hash = _sha256_file(artifact_path)
+        if file_hash is None:
+            continue
+        artifact_items.append(
+            {
+                "name": name,
+                "path": str(artifact_path.resolve()),
+                "sha256": file_hash,
+            }
+        )
+    artifact_items.sort(key=lambda item: item["name"])
+    return artifact_items
+
+
 def _git_value(args: list[str]) -> str | None:
     repo_root = Path(__file__).resolve().parents[2]
     try:
@@ -47,20 +65,6 @@ def build_provenance_record(
     artifacts: dict[str, Path],
 ) -> dict[str, Any]:
     """Create a serializable provenance document for one run command."""
-    artifact_items: list[dict[str, str]] = []
-    for name, artifact_path in artifacts.items():
-        file_hash = _sha256_file(artifact_path)
-        if file_hash is None:
-            continue
-        artifact_items.append(
-            {
-                "name": name,
-                "path": str(artifact_path.resolve()),
-                "sha256": file_hash,
-            }
-        )
-    artifact_items.sort(key=lambda item: item["name"])
-
     return {
         "schema_version": 1,
         "generated_at": datetime.now(UTC).isoformat(),
@@ -79,7 +83,7 @@ def build_provenance_record(
             "git_branch": _git_value(["rev-parse", "--abbrev-ref", "HEAD"]),
         },
         "config": settings.sanitized_summary(),
-        "artifacts": artifact_items,
+        "artifacts": build_artifact_inventory(artifacts),
     }
 
 

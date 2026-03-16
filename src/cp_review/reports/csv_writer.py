@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -25,7 +26,7 @@ FIELDS = [
 ]
 
 
-def write_findings_csv(path: Path, findings: list[FindingRecord | dict[str, Any]]) -> Path:
+def write_findings_csv(path: Path, findings: Sequence[FindingRecord | dict[str, Any]]) -> Path:
     """Write findings to CSV."""
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as handle:

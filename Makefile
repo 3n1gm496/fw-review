@@ -28,7 +28,7 @@ sbom:
 
 audit:
 	mkdir -p $(XDG_CACHE_HOME)/pip-audit
-	$(PYTHON) -m pip freeze | rg -v '^(cp-review==|-e )' > $(XDG_CACHE_HOME)/pip-audit/requirements-audit.txt
+	$(PYTHON) -m pip freeze | grep -Ev '^(cp-review==|-e )' > $(XDG_CACHE_HOME)/pip-audit/requirements-audit.txt
 	XDG_CACHE_HOME=$(XDG_CACHE_HOME) $(PYTHON) -m pip_audit --strict --cache-dir $(XDG_CACHE_HOME)/pip-audit -r $(XDG_CACHE_HOME)/pip-audit/requirements-audit.txt
 
 benchmark:

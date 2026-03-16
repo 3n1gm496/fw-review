@@ -40,6 +40,7 @@ jobs:
           path: output/sbom.cdx.json
 
       - name: Attest SBOM provenance
+        if: ${{ github.event.repository.private == false }}
         uses: actions/attest-build-provenance@v2
         with:
           subject-path: output/sbom.cdx.json

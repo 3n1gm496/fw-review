@@ -16,6 +16,7 @@ from cp_review.collectors.logs import collect_logs_for_rule_uids
 from cp_review.collectors.packages import collect_policy_snapshot
 from cp_review.compare import compare_findings
 from cp_review.config import apply_cli_overrides, build_run_paths, latest_file, load_settings
+from cp_review.doctor import run_local_readiness_checks
 from cp_review.exceptions import CpReviewError
 from cp_review.logging_conf import configure_logging
 from cp_review.normalize.dataset import load_dataset, save_dataset
@@ -335,6 +336,42 @@ def compare(
         },
     )
     typer.echo(f"Drift report written: {output_path}")
+
+
+@app.command()
+def doctor(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+    check_api: bool = typer.Option(False, "--check-api", help="Also validate API login and a read-only call."),
+    ca_bundle: str | None = typer.Option(None, "--ca-bundle", help="Override CA bundle path."),
+    insecure: bool | None = typer.Option(None, "--insecure/--secure", help="Lab-only TLS override."),
+) -> None:
+    """Run readiness checks before office/prod execution."""
+    configure_logging()
+    settings = _load_config(
+        config,
+        env_file,
+        ca_bundle,
+        insecure,
+        package=None,
+        require_credentials=check_api,
+    )
+
+    report = run_local_readiness_checks(settings)
+    checks = list(report["checks"])
+
+    if check_api:
+        try:
+            with CheckPointClient(settings) as client:
+                client.call_api("show-packages", {"limit": 1, "offset": 0, "details-level": "standard"})
+            checks.append({"name": "api_login_readonly_call", "status": "ok", "details": "login/logout/show-packages succeeded"})
+        except Exception as exc:  # noqa: BLE001
+            checks.append({"name": "api_login_readonly_call", "status": "fail", "details": str(exc)})
+
+    has_fail = any(item["status"] == "fail" for item in checks)
+    typer.echo(json.dumps({"summary": "fail" if has_fail else "ok", "checks": checks}, indent=2, sort_keys=True))
+    if has_fail:
+        raise typer.Exit(code=1)
 
 
 def main() -> None:

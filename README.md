@@ -34,6 +34,9 @@ cp-review analyze --config config/settings.yaml
 cp-review report --config config/settings.yaml
 cp-review full-run --config config/settings.yaml
 cp-review compare --config config/settings.yaml
+cp-review doctor --config config/settings.yaml
+# optional real API check
+cp-review doctor --config config/settings.yaml --check-api
 ```
 
 ## Enterprise quality workflow

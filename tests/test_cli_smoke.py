@@ -162,3 +162,22 @@ def test_cli_compare_generates_drift_report(monkeypatch, tmp_path: Path):
     assert drift_path.exists()
     drift = json.loads(drift_path.read_text(encoding="utf-8"))
     assert drift["new_count"] == 1
+
+
+def test_cli_doctor_runs_local_checks(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    config_path = _write_settings(tmp_path, html_report=False)
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "doctor",
+            "--config",
+            str(config_path),
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "ok"

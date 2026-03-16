@@ -14,7 +14,7 @@ from cp_review import __version__
 from cp_review.config import AppConfig
 
 
-def _sha256_file(path: Path) -> str | None:
+def sha256_file(path: Path) -> str | None:
     if not path.exists() or not path.is_file():
         return None
     digest = hashlib.sha256()
@@ -28,7 +28,7 @@ def build_artifact_inventory(artifacts: dict[str, Path]) -> list[dict[str, str]]
     """Return hashed artifact metadata for files that exist on disk."""
     artifact_items: list[dict[str, str]] = []
     for name, artifact_path in artifacts.items():
-        file_hash = _sha256_file(artifact_path)
+        file_hash = sha256_file(artifact_path)
         if file_hash is None:
             continue
         artifact_items.append(

@@ -35,6 +35,7 @@ cp-review report --config config/settings.yaml
 cp-review full-run --config config/settings.yaml
 cp-review compare --config config/settings.yaml
 cp-review doctor --config config/settings.yaml
+cp-review validate-run --config config/settings.yaml
 # optional real API check
 cp-review doctor --config config/settings.yaml --check-api
 # offline preflight only (no credentials required)
@@ -68,6 +69,8 @@ make benchmark
 - `output/reports/<run_id>/drift.json`: finding drift summary from `compare`
 - `output/reports/<run_id>/drift.metrics.json`: drift command metrics
 - `output/reports/<run_id>/drift.provenance.json`: drift command provenance
+- `output/reports/<run_id>/run-manifest.json`: run completeness manifest for `collect`/`analyze`/`report`/`full-run`
+- `cp-review validate-run` verifies manifest integrity, artifact hashes, and summary consistency for a completed run
 
 ## Caveats
 

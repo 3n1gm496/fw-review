@@ -320,3 +320,23 @@ def test_cli_doctor_allows_missing_credentials_in_offline_mode(monkeypatch, tmp_
     )
 
     assert result.exit_code == 0
+
+
+def test_cli_validate_run_passes_for_latest_run(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=False)
+    dataset_path = _write_dataset(tmp_path, run_id="validate-ok")
+
+    analyze_result = RUNNER.invoke(
+        app,
+        ["analyze", "--config", str(config_path), "--dataset-path", str(dataset_path)],
+    )
+    assert analyze_result.exit_code == 0
+
+    result = RUNNER.invoke(app, ["validate-run", "--config", str(config_path)])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "ok"
+    assert payload["run_id"] == "validate-ok"

@@ -6,7 +6,7 @@ from pathlib import Path
 from pydantic import SecretStr
 
 from cp_review.config import AnalysisConfig, AppConfig, CollectionConfig, ManagementConfig, ReportingConfig
-from cp_review.provenance import build_artifact_inventory, write_provenance_file
+from cp_review.provenance import build_artifact_inventory, sha256_file, write_provenance_file
 
 
 def _settings(tmp_path: Path) -> AppConfig:
@@ -58,3 +58,7 @@ def test_build_artifact_inventory_skips_missing_files(tmp_path: Path):
     )
 
     assert [item["name"] for item in inventory] == ["artifact_json"]
+
+
+def test_sha256_file_returns_none_for_missing_files(tmp_path: Path):
+    assert sha256_file(tmp_path / "missing.json") is None

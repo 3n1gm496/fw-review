@@ -27,6 +27,7 @@ from cp_review.reports.json_writer import write_findings_json
 from cp_review.reports.jsonl_writer import write_findings_jsonl
 from cp_review.run_manifest import write_run_manifest
 from cp_review.run_metrics import build_run_metrics, write_run_metrics
+from cp_review.validate_run import validate_run_manifest
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
 LOGGER = logging.getLogger(__name__)
@@ -128,6 +129,13 @@ def _load_findings_for_report(dataset, findings_path: Path | None, settings, rep
     findings = analyze_dataset(dataset, settings.analysis)
     write_findings_json(canonical_findings, findings)
     return findings, canonical_findings
+
+
+def _latest_run_manifest(reports_root: Path) -> Path:
+    matches = sorted(reports_root.glob("*/run-manifest.json"), key=lambda item: (item.parent.name, item.stat().st_mtime))
+    if not matches:
+        raise CpReviewError(f"No run manifests found in {reports_root}")
+    return matches[-1]
 
 
 @app.command()
@@ -487,6 +495,27 @@ def doctor(
     has_fail = any(item["status"] == "fail" for item in checks)
     typer.echo(json.dumps({"summary": "fail" if has_fail else "ok", "checks": checks}, indent=2, sort_keys=True))
     if has_fail:
+        raise typer.Exit(code=1)
+
+
+@app.command("validate-run")
+def validate_run(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Specific run ID to validate."),
+    manifest_path: Path | None = typer.Option(None, "--manifest-path", dir_okay=False, help="Explicit run manifest path."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Validate a completed run manifest and its artifacts."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+
+    if manifest_path is None:
+        reports_root = settings.collection.output_dir / "reports"
+        manifest_path = reports_root / run_id / "run-manifest.json" if run_id else _latest_run_manifest(reports_root)
+
+    report = validate_run_manifest(manifest_path)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    if report["summary"] == "fail":
         raise typer.Exit(code=1)
 
 

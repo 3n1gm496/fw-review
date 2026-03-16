@@ -48,7 +48,7 @@ def discover_packages(client: Any, settings: AppConfig, run_paths: RunPaths) -> 
         offset += len(page)
         if total is not None and offset >= int(total):
             break
-        if len(page) < 100:
+        if total is None and len(page) < 100:
             break
     return packages
 

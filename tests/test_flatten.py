@@ -23,3 +23,20 @@ def test_flatten_access_rulebase_preserves_sections_and_flags():
     assert rules[1].has_any_service is True
     assert rules[1].has_logging is False
     assert warnings == []
+
+
+def test_flatten_access_rulebase_flags_inline_layers_and_unsupported_nodes():
+    fixture_path = Path(__file__).parent / "fixtures" / "complex_rulebase_page.json"
+    page = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    rules, warnings = flatten_access_rulebase_pages(
+        "Remote-Access",
+        {"name": "Perimeter", "type": "access-layer"},
+        [page],
+    )
+
+    assert len(rules) == 1
+    assert rules[0].inline_layer == "Inline-Exceptions"
+    assert rules[0].unsupported_features == ["inline-layer"]
+    warning_codes = {warning.code for warning in warnings}
+    assert warning_codes == {"INLINE_LAYER_PRESENT", "UNSUPPORTED_RULEBASE_NODE"}

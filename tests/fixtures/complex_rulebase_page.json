@@ -1,0 +1,51 @@
+{
+  "rulebase": [
+    {
+      "type": "access-rule",
+      "uid": "rule-inline",
+      "rule-number": 10,
+      "name": "Inline Layer Entry",
+      "enabled": true,
+      "action": {
+        "name": "Accept"
+      },
+      "source": [
+        {
+          "uid": "src-branch",
+          "name": "Branch-Net"
+        }
+      ],
+      "destination": [
+        {
+          "uid": "dst-app",
+          "name": "App-Cluster"
+        }
+      ],
+      "service": [
+        {
+          "uid": "svc-https",
+          "name": "https"
+        }
+      ],
+      "track": {
+        "name": "Log"
+      },
+      "inline-layer": {
+        "uid": "inline-layer-1",
+        "name": "Inline-Exceptions"
+      }
+    },
+    {
+      "type": "threat-section",
+      "uid": "unsupported-node-1",
+      "name": "Threat Prevention",
+      "rulebase": [
+        {
+          "type": "threat-rule",
+          "uid": "threat-rule-1"
+        }
+      ]
+    }
+  ],
+  "total": 2
+}

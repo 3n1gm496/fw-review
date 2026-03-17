@@ -23,8 +23,14 @@
     <h2>Executive technical summary</h2>
     <p>Total rules reviewed: {{ dataset.rules | length }}</p>
     <p>Total findings: {{ findings | length }}</p>
+    <p>Total review-queue items: {{ review_queue | length }}</p>
     <p>
       {% for key, value in by_severity.items() %}
+      <span class="pill">{{ key }}: {{ value }}</span>
+      {% endfor %}
+    </p>
+    <p>
+      {% for key, value in by_action.items() %}
       <span class="pill">{{ key }}: {{ value }}</span>
       {% endfor %}
     </p>
@@ -109,6 +115,57 @@
   </div>
 
   <div class="section">
+    <h2>Top reorder candidates</h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Finding</th><th>Priority</th><th>Related Rules</th></tr></thead>
+      <tbody>
+      {% for item in top_reorder %}
+        <tr>
+          <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_uid }}</td>
+          <td>{{ item.finding_type }}</td>
+          <td>{{ item.priority }}</td>
+          <td>{{ item.related_rules | join(", ") }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Top merge candidates</h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Finding</th><th>Priority</th><th>Related Rules</th></tr></thead>
+      <tbody>
+      {% for item in top_merge %}
+        <tr>
+          <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_uid }}</td>
+          <td>{{ item.finding_type }}</td>
+          <td>{{ item.priority }}</td>
+          <td>{{ item.related_rules | join(", ") }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
+    <h2>Top restrict-scope candidates</h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Finding</th><th>Priority</th><th>Next Step</th></tr></thead>
+      <tbody>
+      {% for item in top_restrict %}
+        <tr>
+          <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_uid }}</td>
+          <td>{{ item.finding_type }}</td>
+          <td>{{ item.priority }}</td>
+          <td>{{ item.suggested_next_step }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section">
     <h2>Per-finding details</h2>
     {% for item in findings %}
       <h3>{{ item.finding_type }} | {{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }}</h3>
@@ -118,6 +175,27 @@
       <p><strong>Review note:</strong> {{ item.review_note }}</p>
       <pre>{{ item.evidence | tojson(indent=2) }}</pre>
     {% endfor %}
+  </div>
+
+  <div class="section">
+    <h2>Review Queue</h2>
+    <table>
+      <thead><tr><th>Priority</th><th>Action</th><th>Rule</th><th>Finding</th><th>Confidence</th><th>Related Rules</th><th>Next Step</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for item in review_queue %}
+        <tr>
+          <td>{{ item.priority }}</td>
+          <td>{{ item.action_type }}</td>
+          <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_uid }}</td>
+          <td>{{ item.finding_type }}</td>
+          <td>{{ item.confidence }}</td>
+          <td>{{ item.related_rules | join(", ") }}</td>
+          <td>{{ item.suggested_next_step }}</td>
+          <td>{{ item.review_status }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
   </div>
 
   <div class="section">

@@ -36,5 +36,7 @@ def test_analyzers_emit_expected_finding_types():
     assert "broad_allow" in finding_types
     assert "no_log_rules" in finding_types
     assert "weak_documentation" in finding_types
-    assert "shadow_candidates" in finding_types
+    assert "full_shadow" in finding_types
+    assert "exact_duplicate" in finding_types
     assert "high_risk_broad_usage" in finding_types
+    assert "broad_rule_before_specific_rule" in finding_types

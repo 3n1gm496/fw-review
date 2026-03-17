@@ -23,7 +23,7 @@ analysis:
   broad_group_size_threshold: 50
   enable_duplicate_candidates: true
   enable_shadow_candidates: true
-  review_rules_path: "./config/review_rules.example.yaml"
+  review_rules_path: "./config/review_rules.yaml"
 
 reporting:
   html_report: true

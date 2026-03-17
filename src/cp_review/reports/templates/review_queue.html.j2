@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>cp-review review queue</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; color: #17202a; }
+    h1, h2 { color: #0b4f6c; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+    th, td { border: 1px solid #d5d8dc; padding: 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #ebf5fb; }
+    .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; background: #d6eaf8; margin-right: 0.25rem; }
+  </style>
+</head>
+<body>
+  <h1>cp-review remediation queue</h1>
+  <p>Generated at {{ generated_at.isoformat() }}</p>
+
+  <h2>Summary</h2>
+  <p>
+    {% for key, value in summary.action_counts.items() %}
+    <span class="pill">{{ key }}: {{ value }}</span>
+    {% endfor %}
+  </p>
+  <p>
+    {% for key, value in summary.priority_counts.items() %}
+    <span class="pill">{{ key }}: {{ value }}</span>
+    {% endfor %}
+  </p>
+
+  <h2>Queue Items</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Priority</th>
+        <th>Action</th>
+        <th>Rule</th>
+        <th>Finding</th>
+        <th>Confidence</th>
+        <th>Why</th>
+        <th>Related Rules</th>
+        <th>Next Step</th>
+        <th>Status</th>
+      </tr>
+    </thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td>{{ item.priority }}</td>
+        <td>{{ item.action_type }}</td>
+        <td>{{ item.package_name }} / {{ item.layer_name }} / #{{ item.rule_number }} / {{ item.rule_uid }}</td>
+        <td>{{ item.finding_type }}</td>
+        <td>{{ item.confidence }}</td>
+        <td>{{ item.why_flagged }}</td>
+        <td>{{ item.related_rules | join(", ") }}</td>
+        <td>{{ item.suggested_next_step }}</td>
+        <td>{{ item.review_status }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</body>
+</html>

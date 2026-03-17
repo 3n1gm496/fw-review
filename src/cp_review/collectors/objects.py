@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import deque
 from collections.abc import Iterable
 from typing import Any
 
@@ -17,6 +18,19 @@ def _iter_rule_refs(rules: Iterable[RuleRecord]) -> Iterable[RuleReference]:
             yield from bucket
 
 
+def _member_uids(payload: dict[str, Any]) -> set[str]:
+    members = payload.get("members") or payload.get("member") or []
+    if not isinstance(members, list):
+        members = [members]
+    result: set[str] = set()
+    for item in members:
+        if isinstance(item, dict) and item.get("uid"):
+            result.add(str(item["uid"]))
+        elif isinstance(item, str):
+            result.add(item)
+    return result
+
+
 def collect_referenced_objects(
     client: Any,
     settings: AppConfig,
@@ -24,7 +38,7 @@ def collect_referenced_objects(
     rules: list[RuleRecord],
 ) -> tuple[dict[str, dict[str, Any]], list[DatasetWarning]]:
     """Fetch only unresolved referenced objects to keep enrichment lazy."""
-    unresolved_uids = sorted(
+    unresolved_uids = deque(
         {
             ref.uid
             for ref in _iter_rule_refs(rules)
@@ -33,10 +47,15 @@ def collect_referenced_objects(
     )
     object_cache: dict[str, dict[str, Any]] = {}
     warnings: list[DatasetWarning] = []
-    for uid in unresolved_uids:
+    failed_uids: set[str] = set()
+    while unresolved_uids:
+        uid = unresolved_uids.popleft()
+        if uid in object_cache or uid in failed_uids:
+            continue
         try:
             response = client.call_api("show-object", {"uid": uid, "details-level": "standard"})
         except CheckPointApiError as exc:
+            failed_uids.add(uid)
             warnings.append(
                 DatasetWarning(
                     code="OBJECT_LOOKUP_FAILED",
@@ -46,6 +65,9 @@ def collect_referenced_objects(
             )
             continue
         object_cache[uid] = response
+        for member_uid in sorted(_member_uids(response)):
+            if member_uid not in object_cache and member_uid not in failed_uids:
+                unresolved_uids.append(member_uid)
         if settings.collection.save_raw:
             save_raw_json(run_paths.raw_dir / "objects" / f"{uid}.json", response)
     return object_cache, warnings

@@ -2,7 +2,10 @@ PYTHON ?= python3
 PIP ?= pip
 XDG_CACHE_HOME ?= ./.cache
 
-.PHONY: setup format lint typecheck test test-cov sbom audit benchmark check
+.PHONY: bootstrap setup format lint typecheck test test-cov sbom audit benchmark run check
+
+bootstrap:
+	./scripts/bootstrap.sh
 
 setup:
 	$(PIP) install -e .[dev]
@@ -33,5 +36,8 @@ audit:
 
 benchmark:
 	$(PYTHON) scripts/benchmark_flatten.py
+
+run:
+	$(PYTHON) -m cp_review.cli run --config config/settings.yaml
 
 check: lint typecheck test-cov

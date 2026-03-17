@@ -7,7 +7,7 @@ from typing import Any
 
 from cp_review.collectors import save_raw_json
 from cp_review.collectors.access_rulebase import collect_access_rulebase_pages
-from cp_review.collectors.objects import collect_referenced_objects
+from cp_review.collectors.objects import collect_referenced_objects, merge_object_dictionary_pages
 from cp_review.config import AppConfig, RunPaths
 from cp_review.models import DatasetWarning, NormalizedDataset
 from cp_review.normalize.enrich import enrich_rules
@@ -59,6 +59,7 @@ def collect_policy_snapshot(client: Any, settings: AppConfig, run_paths: RunPath
     package_names = [pkg.get("name", pkg.get("uid", "unknown-package")) for pkg in packages]
     all_rules = []
     warnings: list[DatasetWarning] = []
+    embedded_object_cache: dict[str, dict[str, Any]] = {}
 
     for package in packages:
         package_name = package.get("name", package.get("uid", "unknown-package"))
@@ -77,8 +78,25 @@ def collect_policy_snapshot(client: Any, settings: AppConfig, run_paths: RunPath
             rules, layer_warnings = flatten_access_rulebase_pages(package_name, layer, pages)
             all_rules.extend(rules)
             warnings.extend(layer_warnings)
+            object_cache_from_pages = merge_object_dictionary_pages(pages)
+            if object_cache_from_pages:
+                warnings.append(
+                    DatasetWarning(
+                        code="OBJECT_DICTIONARY_USED",
+                        message=f"Embedded object dictionary used for layer {layer.get('name', layer.get('uid', 'unknown-layer'))}.",
+                        package_name=package_name,
+                        layer_name=layer.get("name"),
+                    )
+                )
+                embedded_object_cache.update(object_cache_from_pages)
 
-    object_cache, object_warnings = collect_referenced_objects(client, settings, run_paths, all_rules)
+    object_cache, object_warnings = collect_referenced_objects(
+        client,
+        settings,
+        run_paths,
+        all_rules,
+        initial_cache=embedded_object_cache,
+    )
     warnings.extend(object_warnings)
     enriched_rules = enrich_rules(all_rules, object_cache)
     return NormalizedDataset(

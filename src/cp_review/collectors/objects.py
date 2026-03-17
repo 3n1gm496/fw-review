@@ -31,21 +31,42 @@ def _member_uids(payload: dict[str, Any]) -> set[str]:
     return result
 
 
+def merge_object_dictionary_pages(pages: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """Collect object-dictionary payloads embedded in rulebase pages."""
+    cache: dict[str, dict[str, Any]] = {}
+    for page in pages:
+        dictionary = (
+            page.get("objects-dictionary")
+            or page.get("objects_dictionary")
+            or page.get("object-dictionary")
+            or []
+        )
+        if isinstance(dictionary, dict):
+            dictionary = list(dictionary.values())
+        if not isinstance(dictionary, list):
+            continue
+        for item in dictionary:
+            if isinstance(item, dict) and item.get("uid"):
+                cache[str(item["uid"])] = item
+    return cache
+
+
 def collect_referenced_objects(
     client: Any,
     settings: AppConfig,
     run_paths: RunPaths,
     rules: list[RuleRecord],
+    initial_cache: dict[str, dict[str, Any]] | None = None,
 ) -> tuple[dict[str, dict[str, Any]], list[DatasetWarning]]:
     """Fetch only unresolved referenced objects to keep enrichment lazy."""
+    object_cache: dict[str, dict[str, Any]] = dict(initial_cache or {})
     unresolved_uids = deque(
         {
             ref.uid
             for ref in _iter_rule_refs(rules)
-            if ref.uid and (not ref.type or ref.name == ref.uid)
+            if ref.uid and ((not ref.type or ref.name == ref.uid) or ref.uid not in object_cache)
         }
     )
-    object_cache: dict[str, dict[str, Any]] = {}
     warnings: list[DatasetWarning] = []
     failed_uids: set[str] = set()
     while unresolved_uids:

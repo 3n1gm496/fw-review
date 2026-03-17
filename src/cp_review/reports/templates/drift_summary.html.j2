@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>cp-review drift summary</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 2rem; color: #17202a; }
+    h1, h2 { color: #0b4f6c; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 1.5rem; }
+    th, td { border: 1px solid #d5d8dc; padding: 0.5rem; text-align: left; vertical-align: top; }
+    th { background: #ebf5fb; }
+    .pill { display: inline-block; padding: 0.15rem 0.45rem; border-radius: 999px; background: #d6eaf8; margin-right: 0.25rem; }
+  </style>
+</head>
+<body>
+  <h1>cp-review drift summary</h1>
+  <p>Generated at {{ generated_at.isoformat() }}</p>
+  <p>
+    <span class="pill">new: {{ drift.new_count }}</span>
+    <span class="pill">resolved: {{ drift.resolved_count }}</span>
+    <span class="pill">persisting: {{ drift.persisting_count }}</span>
+  </p>
+
+  {% for title, items in [("New Findings", drift.new_findings), ("Resolved Findings", drift.resolved_findings), ("Persisting Findings", drift.persisting_findings)] %}
+  <h2>{{ title }}</h2>
+  <table>
+    <thead><tr><th>Type</th><th>Rule</th><th>Package</th><th>Layer</th><th>Severity</th></tr></thead>
+    <tbody>
+    {% for item in items %}
+      <tr>
+        <td>{{ item.finding_type }}</td>
+        <td>#{{ item.rule_number }} / {{ item.rule_uid }}</td>
+        <td>{{ item.package_name }}</td>
+        <td>{{ item.layer_name }}</td>
+        <td>{{ item.severity or "" }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  {% endfor %}
+</body>
+</html>

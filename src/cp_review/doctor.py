@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,22 @@ from cp_review.config import AppConfig
 def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool = True) -> dict[str, Any]:
     """Run local non-network checks and return a structured report."""
     checks: list[dict[str, str]] = []
+
+    checks.append(
+        {
+            "name": "python_runtime",
+            "status": "ok" if sys.version_info >= (3, 11) else "fail",
+            "details": sys.version.split()[0],
+        }
+    )
+
+    checks.append(
+        {
+            "name": "management_host",
+            "status": "ok" if bool(settings.management.host) else "fail",
+            "details": settings.management.host or "missing host",
+        }
+    )
 
     output_dir = settings.collection.output_dir
     try:
@@ -31,6 +48,24 @@ def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool
             checks.append({"name": "ca_bundle_path", "status": "fail", "details": f"Missing file: {bundle_path}"})
     else:
         checks.append({"name": "ca_bundle_path", "status": "warn", "details": "No CA bundle configured"})
+
+    review_rules_path = settings.analysis.review_rules_path
+    if review_rules_path:
+        checks.append(
+            {
+                "name": "review_rules_path",
+                "status": "ok" if review_rules_path.exists() else "warn",
+                "details": str(review_rules_path),
+            }
+        )
+    else:
+        checks.append(
+            {
+                "name": "review_rules_path",
+                "status": "warn",
+                "details": "No review rules file configured",
+            }
+        )
 
     username_present = bool(os.getenv(settings.management.username_env))
     password_present = bool(os.getenv(settings.management.password_env))

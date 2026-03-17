@@ -15,6 +15,9 @@ class RuleReference(BaseModel):
     uid: str | None = None
     name: str
     type: str | None = None
+    effective_members: list[str] = Field(default_factory=list)
+    effective_networks: list[str] = Field(default_factory=list)
+    effective_services: list[str] = Field(default_factory=list)
 
 
 class LogEvidence(BaseModel):
@@ -99,3 +102,68 @@ class FindingRecord(BaseModel):
     evidence: dict[str, Any] = Field(default_factory=dict)
     recommended_action: str
     review_note: str
+
+
+class EffectiveScope(BaseModel):
+    """Semantically normalized scope representation for one rule."""
+
+    source_any: bool = False
+    destination_any: bool = False
+    service_any: bool = False
+    source_names: list[str] = Field(default_factory=list)
+    destination_names: list[str] = Field(default_factory=list)
+    service_names: list[str] = Field(default_factory=list)
+    application_names: list[str] = Field(default_factory=list)
+    install_on_names: list[str] = Field(default_factory=list)
+    source_networks: list[str] = Field(default_factory=list)
+    destination_networks: list[str] = Field(default_factory=list)
+    service_ranges: list[str] = Field(default_factory=list)
+
+
+class RuleRelation(BaseModel):
+    """Relationship detected between two rules in the same policy layer."""
+
+    relation_type: str
+    package_name: str
+    layer_name: str
+    primary_rule_uid: str
+    primary_rule_number: int
+    secondary_rule_uid: str
+    secondary_rule_number: int
+    coverage_axes: list[str] = Field(default_factory=list)
+    rationale: str
+
+
+class ReviewQueueItem(BaseModel):
+    """Actionable remediation item derived from one finding."""
+
+    item_id: str
+    run_id: str
+    rule_uid: str
+    package_name: str
+    layer_name: str
+    rule_number: int
+    finding_type: str
+    action_type: str
+    priority: str
+    confidence: int
+    risk_score: int
+    remove_confidence: int
+    restrict_confidence: int
+    reorder_confidence: int
+    merge_confidence: int
+    why_flagged: str
+    related_rules: list[str] = Field(default_factory=list)
+    suggested_next_step: str
+    review_status: str = "new"
+
+
+class ReviewStateEntry(BaseModel):
+    """Persistent local review status for one queue item."""
+
+    item_id: str
+    rule_uid: str
+    finding_type: str
+    status: str = "new"
+    notes: str = ""
+    updated_at: datetime

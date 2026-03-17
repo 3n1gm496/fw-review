@@ -179,6 +179,8 @@ def test_cli_analyze_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert metrics_file.exists()
     metrics = json.loads(metrics_file.read_text(encoding="utf-8"))
     assert metrics["command"] == "analyze"
+    assert (tmp_path / "output" / "reports" / "smoke-analyze" / "review-queue.json").exists()
+    assert (tmp_path / "output" / "reports" / "smoke-analyze" / "review-queue.html").exists()
 
 
 def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
@@ -305,6 +307,34 @@ def test_cli_compare_generates_drift_report(monkeypatch, tmp_path: Path):
     assert (run_reports_dir / "drift.run-manifest.json").exists()
 
 
+def test_cli_compare_generates_drift_summary_html(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=False)
+    previous_findings = tmp_path / "previous.json"
+    current_findings = tmp_path / "current.json"
+    previous_findings.write_text("[]", encoding="utf-8")
+    current_findings.write_text("[]", encoding="utf-8")
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "compare",
+            "--config",
+            str(config_path),
+            "--previous-findings",
+            str(previous_findings),
+            "--current-findings",
+            str(current_findings),
+            "--summary-html",
+        ],
+    )
+
+    assert result.exit_code == 0
+    report_dir = tmp_path / "output" / "reports" / current_findings.parent.name
+    assert (report_dir / "drift-summary.html").exists()
+
+
 def test_cli_collect_runs_with_fake_api(monkeypatch, tmp_path: Path):
     monkeypatch.setenv("CP_MGMT_USERNAME", "user")
     monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
@@ -382,13 +412,30 @@ def test_cli_full_run_end_to_end_multi_package_fixture(monkeypatch, tmp_path: Pa
     assert manifest["summary"]["rules_count"] == 5
     assert manifest["summary"]["warnings_count"] == len(dataset["warnings"])
     assert manifest["summary"]["findings_count"] == len(findings)
+    assert manifest["summary"]["review_queue_count"] >= 1
     assert "BrokenPackage" in html_report
     assert "Inline-Exceptions" in html_report
+    assert (report_dir / "review-queue.json").exists()
+    assert (report_dir / "review-queue.html").exists()
 
     validate_result = RUNNER.invoke(app, ["validate-run", "--config", str(config_path), "--run-id", run_id])
     assert validate_result.exit_code == 0
     validate_payload = json.loads(validate_result.stdout)
     assert validate_payload["summary"] == "ok"
+
+
+def test_cli_run_fails_strict_validation_on_structural_warnings(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    monkeypatch.setattr("cp_review.cli.CheckPointClient", MultiPackageE2ECheckPointClient)
+    config_path = _write_settings(tmp_path, html_report=True)
+
+    result = RUNNER.invoke(app, ["run", "--config", str(config_path)])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "fail"
+    assert any(check["name"] == "strict_structural_warnings" and check["status"] == "fail" for check in payload["validation"]["checks"])
 
 
 def test_cli_doctor_runs_local_checks(monkeypatch, tmp_path: Path):
@@ -463,3 +510,122 @@ def test_cli_validate_run_passes_for_latest_run(monkeypatch, tmp_path: Path):
     payload = json.loads(result.stdout)
     assert payload["summary"] == "ok"
     assert payload["run_id"] == "validate-ok"
+
+
+def test_cli_validate_run_strict_fails_on_structural_warning(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    monkeypatch.setattr("cp_review.cli.CheckPointClient", MultiPackageE2ECheckPointClient)
+    config_path = _write_settings(tmp_path, html_report=True)
+
+    full_run_result = RUNNER.invoke(app, ["full-run", "--config", str(config_path)])
+    assert full_run_result.exit_code == 0
+    run_id = next((tmp_path / "output" / "reports").glob("*")).name
+
+    result = RUNNER.invoke(app, ["validate-run", "--config", str(config_path), "--run-id", run_id, "--strict"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "fail"
+    assert any(check["name"] == "strict_structural_warnings" and check["status"] == "fail" for check in payload["checks"])
+
+
+def test_cli_init_materializes_operator_bootstrap_files(tmp_path: Path):
+    result = RUNNER.invoke(app, ["init", "--target-dir", str(tmp_path)])
+
+    assert result.exit_code == 0
+    assert (tmp_path / "config" / "settings.yaml").exists()
+    assert (tmp_path / "config" / "review_rules.yaml").exists()
+    assert (tmp_path / ".env").exists()
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "ok"
+
+
+def test_cli_queue_and_explain_surface_actionable_output(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=True)
+    dataset_path = tmp_path / "output" / "normalized" / "queue-run" / "dataset.json"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-03-12T00:00:00Z",
+                "run_id": "queue-run",
+                "source_host": "mgmt.example.local",
+                "packages": ["Standard"],
+                "rules": [
+                    {
+                        "package_name": "Standard",
+                        "layer_name": "Network",
+                        "rule_number": 10,
+                        "rule_uid": "rule-10",
+                        "rule_name": "Allow Any",
+                        "enabled": True,
+                        "action": "Accept",
+                        "source": [{"name": "Any", "type": "CpmiAnyObject"}],
+                        "destination": [{"name": "Any", "type": "CpmiAnyObject"}],
+                        "service": [{"name": "Any", "type": "service-any"}],
+                        "application_or_site": [],
+                        "install_on": [],
+                        "track": "None",
+                        "comments": "",
+                        "hit_count": 0,
+                        "hit_last_date": None,
+                        "has_any_source": True,
+                        "has_any_destination": True,
+                        "has_any_service": True,
+                        "has_logging": False,
+                        "has_comment": False,
+                        "source_count": 1,
+                        "destination_count": 1,
+                        "service_count": 1,
+                        "inline_layer": None,
+                        "unsupported_features": [],
+                        "original_rule": {},
+                    }
+                ],
+                "log_evidence": {},
+                "warnings": [],
+                "raw_dir": "/tmp/raw",
+            }
+        ),
+        encoding="utf-8",
+    )
+    findings_path = tmp_path / "output" / "reports" / "queue-run" / "findings.json"
+    findings_path.parent.mkdir(parents=True, exist_ok=True)
+    findings_path.write_text(
+        json.dumps(
+            [
+                {
+                    "finding_type": "broad_allow",
+                    "severity": "high",
+                    "risk_score": 92,
+                    "cleanup_confidence": 25,
+                    "package_name": "Standard",
+                    "layer_name": "Network",
+                    "rule_number": 10,
+                    "rule_uid": "rule-10",
+                    "rule_name": "Allow Any",
+                    "evidence": {"broad_axes": 3, "source_count": 1, "destination_count": 1, "service_count": 1},
+                    "recommended_action": "RESTRICT_SOURCE_AND_ENABLE_LOGGING",
+                    "review_note": "Broad allow rule should be narrowed.",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    queue_result = RUNNER.invoke(
+        app,
+        ["queue", "--config", str(config_path), "--dataset-path", str(dataset_path), "--findings-path", str(findings_path)],
+    )
+    assert queue_result.exit_code == 0
+    queue_payload = json.loads(queue_result.stdout)
+    assert queue_payload["queue_items"] == 1
+
+    explain_result = RUNNER.invoke(app, ["explain", "--config", str(config_path), "--run-id", "queue-run", "--rule-uid", "rule-10"])
+    assert explain_result.exit_code == 0
+    explain_payload = json.loads(explain_result.stdout)
+    assert explain_payload["summary"]["finding_count"] == 1
+    assert explain_payload["queue_items"][0]["action_type"] == "RESTRICT_SCOPE"

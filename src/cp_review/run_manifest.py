@@ -45,7 +45,7 @@ def build_run_manifest(
 ) -> dict[str, Any]:
     """Create a serializable manifest for one completed command run."""
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "generated_at": datetime.now(UTC).isoformat(),
         "status": status,
         "command": command,

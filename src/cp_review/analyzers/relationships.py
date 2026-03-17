@@ -61,19 +61,76 @@ def _is_broad(rule: RuleRecord, analysis: AnalysisConfig) -> bool:
     )
 
 
-def _merge_like(earlier: RuleRecord, later: RuleRecord) -> bool:
+def _axis_tokens(scope, axis: str) -> set[str]:
+    if axis == "source":
+        return set(scope.source_networks or scope.source_names)
+    if axis == "destination":
+        return set(scope.destination_networks or scope.destination_names)
+    if axis == "service":
+        return set(scope.service_ranges or scope.service_names)
+    if axis == "application":
+        return set(scope.application_names)
+    if axis == "install_on":
+        return set(scope.install_on_names)
+    return set()
+
+
+def _axis_overlaps(left_scope, right_scope, axis: str) -> bool:
+    left_tokens = _axis_tokens(left_scope, axis)
+    right_tokens = _axis_tokens(right_scope, axis)
+    if axis == "source" and (left_scope.source_any or right_scope.source_any):
+        return True
+    if axis == "destination" and (left_scope.destination_any or right_scope.destination_any):
+        return True
+    if axis == "service" and (left_scope.service_any or right_scope.service_any):
+        return True
+    if not left_tokens or not right_tokens:
+        return True
+    return bool(left_tokens & right_tokens)
+
+
+def _merge_like(earlier: RuleRecord, later: RuleRecord) -> tuple[bool, dict[str, object]]:
     if earlier.action.lower() != later.action.lower():
-        return False
+        return False, {}
     if earlier.package_name != later.package_name or earlier.layer_name != later.layer_name:
-        return False
+        return False, {}
     if abs(earlier.rule_number - later.rule_number) > 5:
-        return False
-    same_destination = {ref.name for ref in earlier.destination} == {ref.name for ref in later.destination}
-    same_service = {ref.name for ref in earlier.service} == {ref.name for ref in later.service}
-    same_install = {ref.name for ref in earlier.install_on} == {ref.name for ref in later.install_on}
-    same_application = {ref.name for ref in earlier.application_or_site} == {ref.name for ref in later.application_or_site}
-    source_overlap = scope_overlaps(earlier, later)
-    return same_destination and same_service and same_install and same_application and source_overlap
+        return False, {}
+
+    left_scope = build_effective_scope(earlier)
+    right_scope = build_effective_scope(later)
+    identical_axes: list[str] = []
+    differing_axes: list[str] = []
+
+    for axis in ("source", "destination", "service", "application", "install_on"):
+        left_tokens = _axis_tokens(left_scope, axis)
+        right_tokens = _axis_tokens(right_scope, axis)
+        if left_tokens == right_tokens:
+            identical_axes.append(axis)
+            continue
+        differing_axes.append(axis)
+
+    if len(differing_axes) != 1:
+        return False, {}
+
+    differing_axis = differing_axes[0]
+    left_tokens = _axis_tokens(left_scope, differing_axis)
+    right_tokens = _axis_tokens(right_scope, differing_axis)
+    residual = _residual_differences(later, earlier)
+    reverse_residual = _residual_differences(earlier, later)
+    residual_count = len(residual.get(f"{differing_axis}_only_in_rule", [])) + len(
+        reverse_residual.get(f"{differing_axis}_only_in_rule", [])
+    )
+    if residual_count > 4:
+        return False, {}
+    if left_tokens and right_tokens and len(left_tokens | right_tokens) > 4:
+        return False, {}
+
+    return True, {
+        "merge_strategy": f"{differing_axis}_consolidation",
+        "identical_axes": identical_axes,
+        "differing_axes": differing_axes,
+    }
 
 
 def run(rules: list[RuleRecord], analysis: AnalysisConfig) -> list:
@@ -180,7 +237,7 @@ def run(rules: list[RuleRecord], analysis: AnalysisConfig) -> list:
                     )
                 continue
 
-            if analysis.enable_shadow_candidates and overlaps and earlier.action.lower() == rule.action.lower():
+            if analysis.enable_shadow_candidates and overlaps and earlier.action.lower() == rule.action.lower() and 3 <= len(axes) < 5:
                 findings.append(
                     make_finding(
                         rule,
@@ -233,19 +290,22 @@ def run(rules: list[RuleRecord], analysis: AnalysisConfig) -> list:
                         )
                     )
 
-            if analysis.enable_duplicate_candidates and _merge_like(earlier, rule):
+            mergeable, merge_details = _merge_like(earlier, rule)
+            if analysis.enable_duplicate_candidates and mergeable:
+                evidence = _relation_evidence(
+                    rule,
+                    earlier,
+                    "merge_candidates",
+                    axes,
+                    "Nearby rules share most normalized scope dimensions and look mergeable.",
+                )
+                evidence.update(merge_details)
                 findings.append(
                     make_finding(
                         rule,
                         finding_type="merge_candidates",
                         severity="medium",
-                        evidence=_relation_evidence(
-                            rule,
-                            earlier,
-                            "merge_candidates",
-                            axes,
-                            "Nearby rules share most normalized scope dimensions and look mergeable.",
-                        ),
+                        evidence=evidence,
                         recommended_action="MERGE_CANDIDATE",
                         review_note="Rules can likely be combined into a cleaner single rule after owner review.",
                     )

@@ -151,3 +151,26 @@ def test_relationships_use_expanded_group_members_for_shadow_detection():
     findings = run([grouped, specific], AnalysisConfig())
 
     assert any(finding.finding_type == "full_shadow" for finding in findings)
+
+
+def test_relationships_emit_partial_shadow_when_only_some_axes_are_covered():
+    earlier = _rule(uid="r1", rule_number=1)
+    later = _rule(uid="r2", rule_number=2)
+    later.application_or_site = [RuleReference(name="Office365", type="application-site")]
+
+    findings = run([earlier, later], AnalysisConfig())
+
+    partial = next(finding for finding in findings if finding.finding_type == "partial_shadow")
+    assert partial.evidence["coverage_axes"] == ["source", "destination", "service", "install_on"]
+    assert partial.evidence["residual_differences"]["application_only_in_rule"] == ["office365"]
+
+
+def test_relationships_merge_candidates_include_strategy_for_single_axis_consolidation():
+    earlier = _rule(uid="r1", rule_number=1, source=[RuleReference(name="10.0.0.10", type="host")])
+    later = _rule(uid="r2", rule_number=2, source=[RuleReference(name="10.0.0.11", type="host")])
+
+    findings = run([earlier, later], AnalysisConfig())
+
+    merge = next(finding for finding in findings if finding.finding_type == "merge_candidates")
+    assert merge.evidence["merge_strategy"] == "source_consolidation"
+    assert merge.evidence["differing_axes"] == ["source"]

@@ -2,6 +2,13 @@
 
 `cp-review` is a read-only CLI for reviewing Check Point on-premises Access Control policy on a Security Management Server in the R81.20 family. It uses the Management Web API directly over HTTPS, persists raw API snapshots locally, normalizes large rulebases into reviewable datasets, and produces technical findings in JSON, CSV, and HTML.
 
+The current enterprise path is built around:
+
+- a single operator entrypoint: `cp-review run`
+- an actionable remediation queue
+- semantic rule relationships instead of name-only heuristics
+- static HTML artifacts suitable for technical review and cleanup campaigns
+
 ## Safety model
 
 - Read-only API usage only: `login`, `logout`, and `show`/`list`/`query` style calls.
@@ -20,8 +27,13 @@
 ```bash
 ./scripts/bootstrap.sh
 source .venv/bin/activate
-cp-review init
 cp-review run --config config/settings.yaml
+```
+
+If you want to materialize config files manually instead of relying on `bootstrap.sh`, run:
+
+```bash
+cp-review init
 ```
 
 `cp-review run` is the standard operator path. It performs collection, analysis, queue generation, HTML reporting, and run validation in one command.
@@ -96,6 +108,25 @@ The tool now produces two main outputs:
 - `findings`: technical detections such as `exact_duplicate`, `semantic_duplicate`, `full_shadow`, `partial_shadow`, `conflicting_overlap`, `broad_rule_before_specific_rule`, `exception_rule_misordered`, and `merge_candidates`
 - `review queue`: action-oriented items grouped into `REMOVE_CANDIDATE`, `RESTRICT_SCOPE`, `REORDER_CANDIDATE`, and `MERGE_CANDIDATE`
 
+## What The Engine Checks
+
+The current semantic engine goes beyond simple string comparison. It now uses:
+
+- nested group expansion for referenced objects
+- host and network containment
+- service group expansion and normalized port ranges
+- embedded `objects-dictionary` payloads when the API returns them
+- install-on and application/site dimensions in rule relationships
+
+Typical outcomes:
+
+- `exact_duplicate`: same normalized signature in the same layer
+- `semantic_duplicate`: same effective scope after normalization
+- `full_shadow`: earlier rule covers the later rule on all relevant axes
+- `partial_shadow`: earlier rule overlaps strongly but leaves residual differences on one or more axes
+- `merge_candidates`: nearby rules differ on a single mergeable axis such as source, destination, or service
+- `conflicting_overlap`: overlapping scope with different action, requiring policy-intent review
+
 Each queue item includes:
 
 - affected rule identity
@@ -104,7 +135,23 @@ Each queue item includes:
 - confidence
 - related rules
 - plain-language rationale
+- residual differences when applicable
 - recommended next step
+
+## Recommended Office Flow
+
+```bash
+cp-review doctor --config config/settings.yaml --check-api
+cp-review run --config config/settings.yaml
+cp-review explain --config config/settings.yaml --rule-uid <rule_uid>
+cp-review compare --config config/settings.yaml --summary-html
+```
+
+Use `validate-run --strict` when you want the run to fail on structural degradation such as:
+
+- partial object enrichment failures
+- targeted log collection failures
+- packages without access layers
 
 ## Caveats
 

@@ -110,11 +110,13 @@ def _why_flagged(finding: FindingRecord) -> str:
             for axis, values in residual.items()
             if isinstance(values, list) and values
         ]
+        merge_strategy = evidence.get("merge_strategy")
         residual_text = f" Residual differences remain on: {', '.join(residual_axes)}." if residual_axes else ""
+        merge_text = f" Suggested merge pattern: {merge_strategy}." if merge_strategy else ""
         return str(
             evidence.get("rationale")
             or f"{relation} detected against related rule(s) {', '.join(_related_rule_uids(finding))}."
-        ) + residual_text
+        ) + residual_text + merge_text
     if finding.finding_type == "unused_rules":
         return f"Rule has zero hits in the review window (last hit: {evidence.get('hit_last_date')})."
     if finding.finding_type == "broad_allow":
@@ -142,6 +144,9 @@ def _suggested_next_step(action_type: str, finding: FindingRecord) -> str:
             return f"Review intended exception ordering and test moving this rule above covering rule {covered_by}."
         return "Review related rules and intended exception ordering; test moving the rule above its parent/covering rule."
     if action_type == "MERGE_CANDIDATE":
+        merge_strategy = finding.evidence.get("merge_strategy")
+        if merge_strategy:
+            return f"Compare related rules side-by-side and consolidate using {merge_strategy} if owner intent matches."
         return "Compare related rules side-by-side and consolidate into one cleaner rule if semantics are equivalent."
     return finding.review_note
 

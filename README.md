@@ -127,6 +127,12 @@ Typical outcomes:
 - `merge_candidates`: nearby rules differ on a single mergeable axis such as source, destination, or service
 - `conflicting_overlap`: overlapping scope with different action, requiring policy-intent review
 
+Conflict findings are also classified to make triage more useful, for example:
+
+- `allow_then_deny_exception`
+- `deny_then_allow_override`
+- `same_scope_policy_conflict`
+
 Each queue item includes:
 
 - affected rule identity
@@ -136,6 +142,7 @@ Each queue item includes:
 - related rules
 - plain-language rationale
 - residual differences when applicable
+- conflict or merge strategy context when applicable
 - recommended next step
 
 ## Recommended Office Flow

@@ -92,11 +92,14 @@ def test_relationships_emit_shadow_and_conflicting_overlap():
 
     findings = run([broad_accept, later_specific, later_drop], AnalysisConfig())
     finding_types = {finding.finding_type for finding in findings}
+    conflicting = next(finding for finding in findings if finding.finding_type == "conflicting_overlap")
 
     assert "full_shadow" in finding_types
     assert "dead_rule_after_covering_rule" in finding_types
     assert "conflicting_overlap" in finding_types
     assert "exception_rule_misordered" in finding_types
+    assert conflicting.evidence["conflict_classification"] == "allow_then_deny_exception"
+    assert conflicting.risk_score > conflicting.cleanup_confidence
 
 
 def test_relationships_respect_duplicate_and_shadow_feature_flags():

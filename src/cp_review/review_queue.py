@@ -111,12 +111,14 @@ def _why_flagged(finding: FindingRecord) -> str:
             if isinstance(values, list) and values
         ]
         merge_strategy = evidence.get("merge_strategy")
+        conflict_classification = evidence.get("conflict_classification")
         residual_text = f" Residual differences remain on: {', '.join(residual_axes)}." if residual_axes else ""
         merge_text = f" Suggested merge pattern: {merge_strategy}." if merge_strategy else ""
+        conflict_text = f" Conflict type: {conflict_classification}." if conflict_classification else ""
         return str(
             evidence.get("rationale")
             or f"{relation} detected against related rule(s) {', '.join(_related_rule_uids(finding))}."
-        ) + residual_text + merge_text
+        ) + residual_text + merge_text + conflict_text
     if finding.finding_type == "unused_rules":
         return f"Rule has zero hits in the review window (last hit: {evidence.get('hit_last_date')})."
     if finding.finding_type == "broad_allow":
@@ -138,6 +140,10 @@ def _suggested_next_step(action_type: str, finding: FindingRecord) -> str:
             return f"Validate owner intent, confirm rule coverage against rule {covered_by}, disable temporarily if safe, then remove."
         return "Validate owner intent, disable temporarily if safe, monitor hits, then remove."
     if action_type == "RESTRICT_SCOPE":
+        if finding.finding_type == "conflicting_overlap":
+            earlier_action = finding.evidence.get("earlier_action")
+            later_action = finding.evidence.get("later_action")
+            return f"Validate policy intent for the {earlier_action}->{later_action} overlap, then narrow scope or reorder the exception safely."
         return "Review source, destination, service and logging; narrow the rule without breaking known flows."
     if action_type == "REORDER_CANDIDATE":
         if covered_by:

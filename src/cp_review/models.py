@@ -156,6 +156,9 @@ class ReviewQueueItem(BaseModel):
     related_rules: list[str] = Field(default_factory=list)
     suggested_next_step: str
     review_status: str = "new"
+    owner: str = ""
+    campaign: str = ""
+    due_date: datetime | None = None
 
 
 class ReviewStateEntry(BaseModel):
@@ -165,5 +168,8 @@ class ReviewStateEntry(BaseModel):
     rule_uid: str
     finding_type: str
     status: str = "new"
+    owner: str = ""
+    campaign: str = ""
+    due_date: datetime | None = None
     notes: str = ""
     updated_at: datetime

@@ -41,6 +41,8 @@
         <th>Related Rules</th>
         <th>Next Step</th>
         <th>Status</th>
+        <th>Owner</th>
+        <th>Campaign</th>
       </tr>
     </thead>
     <tbody>
@@ -55,6 +57,8 @@
         <td>{{ item.related_rules | join(", ") }}</td>
         <td>{{ item.suggested_next_step }}</td>
         <td>{{ item.review_status }}</td>
+        <td>{{ item.owner }}</td>
+        <td>{{ item.campaign }}</td>
       </tr>
     {% endfor %}
     </tbody>

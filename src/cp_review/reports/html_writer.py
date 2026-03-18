@@ -25,6 +25,8 @@ def write_html_report(
     dataset: NormalizedDataset,
     settings: Any,
     review_queue: list[ReviewQueueItem] | None = None,
+    top_remediation: dict[str, Any] | None = None,
+    policy_health: dict[str, Any] | None = None,
 ) -> Path:
     """Render the technical HTML report."""
     normalized_findings = _normalize_findings(findings)
@@ -49,6 +51,8 @@ def write_html_report(
         by_severity=dict(by_severity),
         by_action=dict(by_action),
         review_queue=review_queue,
+        top_remediation=top_remediation or {},
+        policy_health=policy_health or {},
         config_summary=settings.sanitized_summary(),
         top_risk=sorted(normalized_findings, key=lambda item: item.risk_score, reverse=True)[:10],
         top_cleanup=sorted(normalized_findings, key=lambda item: item.cleanup_confidence, reverse=True)[:10],

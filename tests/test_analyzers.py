@@ -40,3 +40,7 @@ def test_analyzers_emit_expected_finding_types():
     assert "exact_duplicate" in finding_types
     assert "high_risk_broad_usage" in finding_types
     assert "broad_rule_before_specific_rule" in finding_types
+
+    broad_finding = next(finding for finding in findings if finding.finding_type == "broad_allow")
+    assert broad_finding.evidence["advisor_type"] == "broad_rule_advisor"
+    assert broad_finding.evidence["primary_restriction_axis"] in {"source", "destination", "service", "logging"}

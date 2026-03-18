@@ -8,6 +8,8 @@ The current enterprise path is built around:
 - an actionable remediation queue
 - semantic rule relationships instead of name-only heuristics
 - static HTML artifacts suitable for technical review and cleanup campaigns
+- policy health scoring and top-remediation shortlists
+- local campaign workflow state and what-if simulation
 
 ## Safety model
 
@@ -52,6 +54,8 @@ cp-review collect --config config/settings.yaml
 cp-review analyze --config config/settings.yaml
 cp-review queue --config config/settings.yaml
 cp-review explain --config config/settings.yaml --rule-uid <rule_uid>
+cp-review simulate --config config/settings.yaml --rule-uid <rule_uid>
+cp-review review-state --config config/settings.yaml --rule-uid <rule_uid> --owner netops --campaign q2-cleanup --status assigned
 cp-review report --config config/settings.yaml
 cp-review full-run --config config/settings.yaml
 cp-review compare --config config/settings.yaml --summary-html
@@ -92,6 +96,8 @@ make benchmark
 - `output/reports/<run_id>/review-queue.csv`: queue export for spreadsheets and ticket prep
 - `output/reports/<run_id>/review-queue.html`: static queue view for reviewers
 - `output/reports/<run_id>/review-state.yaml`: local review workflow state
+- `output/reports/<run_id>/top-remediation.json`: top prioritized action buckets for cleanup campaigns
+- `output/reports/<run_id>/policy-health.json`: overall, package, and layer health scores
 - `output/reports/<run_id>/drift.json`: finding drift summary from `compare`
 - `output/reports/<run_id>/drift-summary.html`: HTML drift summary from `compare --summary-html`
 - `output/reports/<run_id>/drift.metrics.json`: drift command metrics
@@ -107,6 +113,13 @@ The tool now produces two main outputs:
 
 - `findings`: technical detections such as `exact_duplicate`, `semantic_duplicate`, `full_shadow`, `partial_shadow`, `conflicting_overlap`, `broad_rule_before_specific_rule`, `exception_rule_misordered`, and `merge_candidates`
 - `review queue`: action-oriented items grouped into `REMOVE_CANDIDATE`, `RESTRICT_SCOPE`, `REORDER_CANDIDATE`, and `MERGE_CANDIDATE`
+
+On top of that, the current operator workflow also includes:
+
+- a `policy health` score per package and layer
+- `top remediation actions` for fast cleanup campaign triage
+- local `review-state` ownership and campaign metadata
+- `simulate` output to estimate whether a rule looks covered before removal
 
 ## What The Engine Checks
 
@@ -127,6 +140,12 @@ Typical outcomes:
 - `merge_candidates`: nearby rules differ on a single mergeable axis such as source, destination, or service
 - `conflicting_overlap`: overlapping scope with different action, requiring policy-intent review
 
+Broad-rule findings now also include an advisor that suggests:
+
+- which axis to restrict first
+- why that axis is the best first cleanup move
+- a recommended remediation sequence
+
 Conflict findings are also classified to make triage more useful, for example:
 
 - `allow_then_deny_exception`
@@ -144,6 +163,7 @@ Each queue item includes:
 - residual differences when applicable
 - conflict or merge strategy context when applicable
 - recommended next step
+- optional owner, campaign, and due date metadata from the local review workflow
 
 ## Recommended Office Flow
 
@@ -151,6 +171,8 @@ Each queue item includes:
 cp-review doctor --config config/settings.yaml --check-api
 cp-review run --config config/settings.yaml
 cp-review explain --config config/settings.yaml --rule-uid <rule_uid>
+cp-review simulate --config config/settings.yaml --rule-uid <rule_uid>
+cp-review review-state --config config/settings.yaml --rule-uid <rule_uid> --owner netops --campaign q2-cleanup --status assigned
 cp-review compare --config config/settings.yaml --summary-html
 ```
 

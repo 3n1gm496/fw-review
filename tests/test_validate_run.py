@@ -57,6 +57,10 @@ def test_validate_run_manifest_passes_for_consistent_analyze_run(tmp_path: Path)
     review_queue_html.write_text("<html><body>queue</body></html>", encoding="utf-8")
     review_state_yaml = reports_dir / "review-state.yaml"
     review_state_yaml.write_text("schema_version: 1\nentries: []\n", encoding="utf-8")
+    top_remediation_json = reports_dir / "top-remediation.json"
+    top_remediation_json.write_text('{"summary": {}, "actions": {}}', encoding="utf-8")
+    policy_health_json = reports_dir / "policy-health.json"
+    policy_health_json.write_text('{"overall": {"score": 90}}', encoding="utf-8")
     manifest_path = reports_dir / "run-manifest.json"
 
     write_run_manifest(
@@ -73,6 +77,8 @@ def test_validate_run_manifest_passes_for_consistent_analyze_run(tmp_path: Path)
             "review_queue_csv": review_queue_csv,
             "review_queue_html": review_queue_html,
             "review_state_yaml": review_state_yaml,
+            "top_remediation_json": top_remediation_json,
+            "policy_health_json": policy_health_json,
         },
         summary={"findings_count": 0, "rules_count": 0, "warnings_count": 0, "review_queue_count": 0, "action_counts": {}},
     )
@@ -104,6 +110,10 @@ def test_validate_run_manifest_fails_on_hash_mismatch(tmp_path: Path):
     review_queue_html.write_text("<html><body>queue</body></html>", encoding="utf-8")
     review_state_yaml = reports_dir / "review-state.yaml"
     review_state_yaml.write_text("schema_version: 1\nentries: []\n", encoding="utf-8")
+    top_remediation_json = reports_dir / "top-remediation.json"
+    top_remediation_json.write_text('{"summary": {}, "actions": {}}', encoding="utf-8")
+    policy_health_json = reports_dir / "policy-health.json"
+    policy_health_json.write_text('{"overall": {"score": 90}}', encoding="utf-8")
     manifest_path = reports_dir / "run-manifest.json"
 
     write_run_manifest(
@@ -120,6 +130,8 @@ def test_validate_run_manifest_fails_on_hash_mismatch(tmp_path: Path):
             "review_queue_csv": review_queue_csv,
             "review_queue_html": review_queue_html,
             "review_state_yaml": review_state_yaml,
+            "top_remediation_json": top_remediation_json,
+            "policy_health_json": policy_health_json,
         },
         summary={"findings_count": 0, "rules_count": 0, "warnings_count": 0, "review_queue_count": 0, "action_counts": {}},
     )
@@ -162,6 +174,10 @@ def test_validate_run_manifest_strict_fails_on_structural_warning(tmp_path: Path
     review_queue_html.write_text("<html><body>queue</body></html>", encoding="utf-8")
     review_state_yaml = reports_dir / "review-state.yaml"
     review_state_yaml.write_text("schema_version: 1\nentries: []\n", encoding="utf-8")
+    top_remediation_json = reports_dir / "top-remediation.json"
+    top_remediation_json.write_text('{"summary": {}, "actions": {}}', encoding="utf-8")
+    policy_health_json = reports_dir / "policy-health.json"
+    policy_health_json.write_text('{"overall": {"score": 40}}', encoding="utf-8")
     manifest_path = reports_dir / "run-manifest.json"
 
     write_run_manifest(
@@ -179,6 +195,8 @@ def test_validate_run_manifest_strict_fails_on_structural_warning(tmp_path: Path
             "review_queue_csv": review_queue_csv,
             "review_queue_html": review_queue_html,
             "review_state_yaml": review_state_yaml,
+            "top_remediation_json": top_remediation_json,
+            "policy_health_json": policy_health_json,
         },
         summary={"findings_count": 0, "rules_count": 0, "warnings_count": 1, "review_queue_count": 0, "action_counts": {}},
         warnings=[{"code": "NO_ACCESS_LAYERS", "message": "Package has no access layers", "package_name": "Broken"}],

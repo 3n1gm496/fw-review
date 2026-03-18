@@ -181,6 +181,8 @@ def test_cli_analyze_runs_without_credentials(monkeypatch, tmp_path: Path):
     assert metrics["command"] == "analyze"
     assert (tmp_path / "output" / "reports" / "smoke-analyze" / "review-queue.json").exists()
     assert (tmp_path / "output" / "reports" / "smoke-analyze" / "review-queue.html").exists()
+    assert (tmp_path / "output" / "reports" / "smoke-analyze" / "top-remediation.json").exists()
+    assert (tmp_path / "output" / "reports" / "smoke-analyze" / "policy-health.json").exists()
 
 
 def test_cli_report_runs_without_credentials(monkeypatch, tmp_path: Path):
@@ -413,10 +415,13 @@ def test_cli_full_run_end_to_end_multi_package_fixture(monkeypatch, tmp_path: Pa
     assert manifest["summary"]["warnings_count"] == len(dataset["warnings"])
     assert manifest["summary"]["findings_count"] == len(findings)
     assert manifest["summary"]["review_queue_count"] >= 1
+    assert manifest["summary"]["policy_health_score"] is not None
     assert "BrokenPackage" in html_report
     assert "Inline-Exceptions" in html_report
     assert (report_dir / "review-queue.json").exists()
     assert (report_dir / "review-queue.html").exists()
+    assert (report_dir / "top-remediation.json").exists()
+    assert (report_dir / "policy-health.json").exists()
 
     validate_result = RUNNER.invoke(app, ["validate-run", "--config", str(config_path), "--run-id", run_id])
     assert validate_result.exit_code == 0
@@ -623,9 +628,161 @@ def test_cli_queue_and_explain_surface_actionable_output(monkeypatch, tmp_path: 
     assert queue_result.exit_code == 0
     queue_payload = json.loads(queue_result.stdout)
     assert queue_payload["queue_items"] == 1
+    assert queue_payload["policy_health_score"] is not None
 
     explain_result = RUNNER.invoke(app, ["explain", "--config", str(config_path), "--run-id", "queue-run", "--rule-uid", "rule-10"])
     assert explain_result.exit_code == 0
     explain_payload = json.loads(explain_result.stdout)
     assert explain_payload["summary"]["finding_count"] == 1
     assert explain_payload["queue_items"][0]["action_type"] == "RESTRICT_SCOPE"
+
+
+def test_cli_review_state_updates_owner_campaign_and_status(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=True)
+    dataset_path = _write_dataset(tmp_path, run_id="review-state-run")
+    findings_path = tmp_path / "findings.json"
+    findings_path.write_text(
+        json.dumps(
+            [
+                {
+                    "finding_type": "unused_rules",
+                    "severity": "medium",
+                    "risk_score": 40,
+                    "cleanup_confidence": 80,
+                    "package_name": "Standard",
+                    "layer_name": "Network",
+                    "rule_number": 12,
+                    "rule_uid": "rule-12",
+                    "rule_name": "Unused Rule",
+                    "evidence": {"hit_count": 0, "hit_last_date": None},
+                    "recommended_action": "REMOVE_CANDIDATE",
+                    "review_note": "remove me",
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+    RUNNER.invoke(app, ["queue", "--config", str(config_path), "--dataset-path", str(dataset_path), "--findings-path", str(findings_path)])
+
+    result = RUNNER.invoke(
+        app,
+        [
+            "review-state",
+            "--config",
+            str(config_path),
+            "--run-id",
+            "review-state-run",
+            "--rule-uid",
+            "rule-12",
+            "--status",
+            "assigned",
+            "--owner",
+            "netops",
+            "--campaign",
+            "q2-cleanup",
+        ],
+    )
+
+    assert result.exit_code == 0
+    state_path = tmp_path / "output" / "reports" / "review-state-run" / "review-state.yaml"
+    state_content = state_path.read_text(encoding="utf-8")
+    assert "assigned" in state_content
+    assert "netops" in state_content
+    assert "q2-cleanup" in state_content
+
+
+def test_cli_simulate_returns_covering_rule_analysis(monkeypatch, tmp_path: Path):
+    monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
+    monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
+    config_path = _write_settings(tmp_path, html_report=True)
+    dataset_path = tmp_path / "output" / "normalized" / "simulate-run" / "dataset.json"
+    dataset_path.parent.mkdir(parents=True, exist_ok=True)
+    dataset_path.write_text(
+        json.dumps(
+            {
+                "generated_at": "2026-03-12T00:00:00Z",
+                "run_id": "simulate-run",
+                "source_host": "mgmt.example.local",
+                "packages": ["Standard"],
+                "rules": [
+                    {
+                        "package_name": "Standard",
+                        "layer_name": "Network",
+                        "rule_number": 1,
+                        "rule_uid": "rule-parent",
+                        "rule_name": "Parent",
+                        "enabled": True,
+                        "action": "Accept",
+                        "source": [{"name": "Any", "type": "CpmiAnyObject"}],
+                        "destination": [{"name": "Any", "type": "CpmiAnyObject"}],
+                        "service": [{"name": "Any", "type": "service-any"}],
+                        "application_or_site": [],
+                        "install_on": [],
+                        "track": "Log",
+                        "comments": "parent",
+                        "hit_count": 100,
+                        "hit_last_date": None,
+                        "has_any_source": True,
+                        "has_any_destination": True,
+                        "has_any_service": True,
+                        "has_logging": True,
+                        "has_comment": True,
+                        "source_count": 1,
+                        "destination_count": 1,
+                        "service_count": 1,
+                        "inline_layer": None,
+                        "unsupported_features": [],
+                        "original_rule": {},
+                    },
+                    {
+                        "package_name": "Standard",
+                        "layer_name": "Network",
+                        "rule_number": 2,
+                        "rule_uid": "rule-child",
+                        "rule_name": "Child",
+                        "enabled": True,
+                        "action": "Accept",
+                        "source": [{"name": "10.0.0.10", "type": "host"}],
+                        "destination": [{"name": "10.0.1.10", "type": "host"}],
+                        "service": [{"name": "https", "type": "service-tcp"}],
+                        "application_or_site": [],
+                        "install_on": [],
+                        "track": "Log",
+                        "comments": "child",
+                        "hit_count": 0,
+                        "hit_last_date": None,
+                        "has_any_source": False,
+                        "has_any_destination": False,
+                        "has_any_service": False,
+                        "has_logging": True,
+                        "has_comment": True,
+                        "source_count": 1,
+                        "destination_count": 1,
+                        "service_count": 1,
+                        "inline_layer": None,
+                        "unsupported_features": [],
+                        "original_rule": {},
+                    },
+                ],
+                "log_evidence": {},
+                "warnings": [],
+                "raw_dir": "/tmp/raw",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    analyze_result = RUNNER.invoke(app, ["analyze", "--config", str(config_path), "--dataset-path", str(dataset_path)])
+    assert analyze_result.exit_code == 0
+
+    result = RUNNER.invoke(
+        app,
+        ["simulate", "--config", str(config_path), "--run-id", "simulate-run", "--rule-uid", "rule-child"],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["simulation"]["covering_rules"]
+    assert payload["simulation"]["safe_remove_confidence"] >= 55

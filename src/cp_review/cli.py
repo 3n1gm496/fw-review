@@ -45,8 +45,22 @@ from cp_review.run_manifest import write_run_manifest
 from cp_review.run_metrics import build_run_metrics, write_run_metrics
 from cp_review.simulation import simulate_rule_change
 from cp_review.validate_run import validate_run_manifest
+from cp_review.web import serve_web_app
+from cp_review.web.config import load_web_config
+from cp_review.web.service import (
+    export_review_state as export_web_review_state,
+)
+from cp_review.web.service import (
+    init_web_workspace,
+    run_web_doctor,
+)
+from cp_review.web.service import (
+    sync_runs as sync_web_runs,
+)
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+web_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Local-first remediation cockpit.")
+app.add_typer(web_app, name="web")
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SETTINGS_TEMPLATE = """management:
   host: "mgmt.example.local"
@@ -382,6 +396,10 @@ def _select_reports_dir(settings, run_id: str | None = None) -> Path:
     return settings.collection.output_dir / "reports" / _latest_run_manifest(settings.collection.output_dir / "reports").parent.name
 
 
+def _web_config_path(config: Path) -> Path:
+    return config.parent / "web.yaml"
+
+
 def _execute_full_run(
     settings,
     *,
@@ -483,6 +501,96 @@ def init(
     typer.echo(json.dumps(report, indent=2, sort_keys=True))
     if report["summary"] == "fail":
         raise typer.Exit(code=1)
+
+
+@web_app.command("init")
+def web_init(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing web config if present."),
+) -> None:
+    """Initialize the local-first remediation cockpit workspace."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config_path = _web_config_path(config)
+    web_config = load_web_config(settings, config_path=web_config_path)
+    report = init_web_workspace(settings, web_config, web_config_path=web_config_path, force=force)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    if report["summary"] == "fail":
+        raise typer.Exit(code=1)
+
+
+@web_app.command("serve")
+def web_serve(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+    host: str | None = typer.Option(None, "--host", help="Override bind host."),
+    port: int | None = typer.Option(None, "--port", help="Override bind port."),
+) -> None:
+    """Serve the remediation cockpit locally."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config_path = _web_config_path(config)
+    web_config = load_web_config(settings, config_path=web_config_path)
+    if host is not None:
+        web_config.host = host
+    if port is not None:
+        web_config.port = port
+    web_config.app_dir.mkdir(parents=True, exist_ok=True)
+    init_web_workspace(settings, web_config, web_config_path=web_config_path, force=False)
+    serve_web_app(settings, web_config, web_config_path=web_config_path)
+
+
+@web_app.command("doctor")
+def web_doctor_command(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Check remediation cockpit readiness."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config_path = _web_config_path(config)
+    web_config = load_web_config(settings, config_path=web_config_path)
+    report = run_web_doctor(settings, web_config, web_config_path=web_config_path)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    if report["summary"] == "fail":
+        raise typer.Exit(code=1)
+
+
+@web_app.command("sync")
+def web_sync(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Optional single run to sync."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Import run artifacts into the local SQLite web index."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    report = sync_web_runs(settings, web_config, run_id=run_id)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+
+
+@web_app.command("export-state")
+def web_export_state(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Optional run ID to export state for."),
+    format_name: str = typer.Option("yaml", "--format", help="State export format: yaml or json."),
+    output_path: Path | None = typer.Option(None, "--output-path", dir_okay=False, help="Optional destination path."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Export review workflow state from SQLite to YAML/JSON."""
+    configure_logging()
+    if format_name not in {"yaml", "json"}:
+        raise CpReviewError("Unsupported export format. Use yaml or json.")
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    selected_run_id = run_id or _latest_run_manifest(settings.collection.output_dir / "reports").parent.name
+    if output_path is None:
+        suffix = "json" if format_name == "json" else "yaml"
+        output_path = settings.collection.output_dir / "reports" / selected_run_id / f"review-state.export.{suffix}"
+    path = export_web_review_state(settings, web_config, run_id=selected_run_id, format_name=format_name, output_path=output_path)
+    typer.echo(json.dumps({"summary": "ok", "output_path": str(path), "run_id": selected_run_id}, indent=2, sort_keys=True))
 
 
 @app.command()

@@ -1,0 +1,35 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Remediation Queue</h2><p>Action-oriented triage with current review workflow state.</p></div></div>
+<form class="toolbar" method="get" action="/queue">
+  <select name="run_id">
+    {% for run in runs %}<option value="{{ run.run_id }}" {% if filters.run_id == run.run_id %}selected{% endif %}>{{ run.run_id }}</option>{% endfor %}
+  </select>
+  <input name="package" placeholder="Package" value="{{ filters.package or '' }}">
+  <input name="layer" placeholder="Layer" value="{{ filters.layer or '' }}">
+  <select name="action_type"><option value="">Action</option><option value="REMOVE_CANDIDATE">Remove</option><option value="RESTRICT_SCOPE">Restrict</option><option value="REORDER_CANDIDATE">Reorder</option><option value="MERGE_CANDIDATE">Merge</option></select>
+  <select name="priority"><option value="">Priority</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
+  <select name="status"><option value="">Status</option><option value="new">New</option><option value="accepted">Accepted</option><option value="false_positive">False positive</option><option value="needs_owner_input">Needs owner</option><option value="deferred">Deferred</option><option value="done">Done</option></select>
+  <button type="submit">Filter</button>
+</form>
+<section class="panel">
+  <table>
+    <thead><tr><th>Rule</th><th>Action</th><th>Priority</th><th>Status</th><th>Owner</th><th>Campaign</th><th>Why</th></tr></thead>
+    <tbody>
+      {% for item in items %}
+      <tr>
+        <td><a href="/rules/{{ item.rule_uid }}?run_id={{ item.run_id }}">{{ item.package_name }}/{{ item.layer_name }} #{{ item.rule_number }}</a></td>
+        <td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td>
+        <td>{{ item.priority }}</td>
+        <td>{{ item.review_status }}</td>
+        <td>{{ item.owner }}</td>
+        <td>{{ item.campaign }}</td>
+        <td>{{ item.why_flagged }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">No queue items matched the selected filters.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Drift</h2><p>Compare two runs to spot regressions, improvements and new cleanup work.</p></div></div>
+<section class="panel">
+  <p><strong>Previous:</strong> {{ previous_run_id }} · <strong>Current:</strong> {{ current_run_id }}</p>
+  <div class="cards">
+    <div class="card"><strong>{{ drift.new_count }}</strong><span>New Findings</span></div>
+    <div class="card"><strong>{{ drift.resolved_count }}</strong><span>Resolved</span></div>
+    <div class="card"><strong>{{ drift.persisting_count }}</strong><span>Persisting</span></div>
+    <div class="card"><strong>{{ drift.current_count }}</strong><span>Current Total</span></div>
+  </div>
+  <pre>{{ drift | tojson(indent=2) }}</pre>
+</section>
+{% endblock %}

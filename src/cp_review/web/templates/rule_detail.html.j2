@@ -1,0 +1,25 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Rule Detail</h2><p>Explainability, semantic relationships and remediation rationale.</p></div><div><a href="/simulate/{{ payload.rule.rule_uid }}?run_id={{ run_id }}">Open simulation</a></div></div>
+<div class="cards">
+  <div class="card"><strong>{{ payload.summary.finding_count }}</strong><span>Findings</span></div>
+  <div class="card"><strong>{{ payload.summary.queue_item_count }}</strong><span>Queue Items</span></div>
+  <div class="card"><strong>{{ payload.related_rules | length }}</strong><span>Related Rules</span></div>
+</div>
+<div class="grid-2">
+  <section class="panel">
+    <h3>{{ payload.rule.rule_name or payload.rule.rule_uid }}</h3>
+    <p><strong>Package:</strong> {{ payload.rule.package_name }}<br><strong>Layer:</strong> {{ payload.rule.layer_name }}<br><strong>Rule number:</strong> {{ payload.rule.rule_number }}</p>
+    <p><strong>Action:</strong> {{ payload.rule.action }} · <strong>Track:</strong> {{ payload.rule.track }}</p>
+    <p class="muted">Related rules: {{ payload.related_rules | join(', ') if payload.related_rules else 'none' }}</p>
+  </section>
+  <section class="panel">
+    <h3>Queue</h3>
+    <table><thead><tr><th>Action</th><th>Priority</th><th>Next Step</th></tr></thead><tbody>{% for item in payload.queue_items %}<tr><td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td><td>{{ item.priority }}</td><td>{{ item.suggested_next_step }}</td></tr>{% else %}<tr><td colspan="3">No queue items.</td></tr>{% endfor %}</tbody></table>
+  </section>
+</div>
+<section class="panel">
+  <h3>Findings Payload</h3>
+  <pre>{{ payload.findings | tojson(indent=2) }}</pre>
+</section>
+{% endblock %}

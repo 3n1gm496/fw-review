@@ -1,0 +1,21 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Runs</h2><p>Indexed manifests, validation status and artifact drill-down.</p></div></div>
+<section class="panel">
+  <table>
+    <thead><tr><th>Run</th><th>Command</th><th>Generated</th><th>Validation</th><th>Queue</th><th>Health</th></tr></thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td><a href="/runs/{{ run.run_id }}">{{ run.run_id }}</a></td>
+        <td>{{ run.command }}</td>
+        <td>{{ run.generated_at }}</td>
+        <td><span class="badge {{ 'ok' if run.validation_summary == 'ok' else 'warn' if run.validation_summary == 'warn' else 'fail' }}">{{ run.validation_summary }}</span></td>
+        <td>{{ run.summary.review_queue_count or 0 }}</td>
+        <td>{{ run.policy_health.overall.score if run.policy_health and run.policy_health.overall else 'n/a' }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endblock %}

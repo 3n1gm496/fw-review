@@ -1,0 +1,53 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Operational Overview</h2>
+    <p>Local-first cockpit for remediation campaigns, health, drift and run orchestration.</p>
+  </div>
+  <form method="post" action="/api/run" onsubmit="event.preventDefault(); fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strict_validate:true})}).then(()=>window.location.reload());">
+    <button type="submit">Launch Run</button>
+  </form>
+</div>
+{% if overview %}
+<div class="cards">
+  <div class="card"><strong>{{ overview.summary.findings_count or 0 }}</strong><span>Findings</span></div>
+  <div class="card"><strong>{{ overview.summary.review_queue_count or 0 }}</strong><span>Queue Items</span></div>
+  <div class="card"><strong>{{ overview.policy_health.overall.score if overview.policy_health and overview.policy_health.overall else 'n/a' }}</strong><span>Policy Health</span></div>
+  <div class="card"><strong>{{ overview.warnings | length }}</strong><span>Warnings</span></div>
+</div>
+<div class="grid-2">
+  <section class="panel">
+    <h3>Latest Run</h3>
+    <p><strong>{{ overview.run_id }}</strong> <span class="badge {{ 'ok' if overview.validation_summary == 'ok' else 'warn' if overview.validation_summary == 'warn' else 'fail' }}">{{ overview.validation_summary }}</span></p>
+    <p class="muted">Generated at {{ overview.generated_at }}</p>
+    <p><a href="/runs/{{ overview.run_id }}">Open run detail</a> · <a href="/queue?run_id={{ overview.run_id }}">Open queue</a></p>
+    <h4>Quick Wins</h4>
+    <ul class="list">
+      {% for action, items in (overview.top_remediation.actions or {}).items() %}
+      <li>{{ action }}: {{ items | length }} shortlisted items</li>
+      {% else %}
+      <li>No remediation shortlist available yet.</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section class="panel">
+    <h3>Recent Runs</h3>
+    <table>
+      <thead><tr><th>Run</th><th>Health</th><th>Queue</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td><a href="/runs/{{ run.run_id }}">{{ run.run_id }}</a></td>
+          <td>{{ run.policy_health.overall.score if run.policy_health and run.policy_health.overall else 'n/a' }}</td>
+          <td>{{ run.summary.review_queue_count or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+{% else %}
+<section class="panel"><h3>No indexed runs yet</h3><p>Use <code>cp-review run</code> or launch a run from this cockpit, then sync.</p></section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Settings</h2><p>Runtime configuration, local app paths and recent web jobs.</p></div></div>
+<div class="grid-2">
+  <section class="panel"><h3>Core Settings</h3><pre>{{ settings | tojson(indent=2) }}</pre></section>
+  <section class="panel"><h3>Web Settings</h3><pre>{{ web_config | tojson(indent=2) }}</pre></section>
+</div>
+<section class="panel"><h3>Recent Jobs</h3><pre>{{ recent_jobs | tojson(indent=2) }}</pre></section>
+{% endblock %}

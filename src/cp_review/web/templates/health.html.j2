@@ -1,0 +1,5 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Health</h2><p>Doctor checks for Python, filesystem, config, templates and output paths.</p></div></div>
+<section class="panel"><h3>Doctor Report</h3><pre>{{ report | tojson(indent=2) }}</pre></section>
+{% endblock %}

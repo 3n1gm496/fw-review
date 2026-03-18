@@ -28,6 +28,7 @@ Bootstrap complete.
 Next steps:
   1. Update ${ROOT_DIR}/.env with read-only API credentials
   2. Review ${ROOT_DIR}/config/settings.yaml
-  3. Run: cp-review run --config ${ROOT_DIR}/config/settings.yaml
+  3. Initialize the cockpit: cp-review web init --config ${ROOT_DIR}/config/settings.yaml
+  4. Launch the cockpit: cp-review web serve --config ${ROOT_DIR}/config/settings.yaml
 
 EOF

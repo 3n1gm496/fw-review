@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ app_title }}</title>
+    <style>
+      :root {
+        --bg: #f4f1e8;
+        --panel: #fffdf8;
+        --ink: #17202a;
+        --muted: #607080;
+        --line: #d8cfbe;
+        --accent: #005f73;
+        --accent-soft: #d6ecef;
+        --danger: #9b2226;
+        --warn: #ca6702;
+        --ok: #2a9d8f;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Georgia, "Times New Roman", serif; color: var(--ink); background: linear-gradient(180deg, #efe8d9 0%, #f8f5ed 100%); }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      .layout { display: grid; grid-template-columns: 260px 1fr; min-height: 100vh; }
+      nav { background: #17313b; color: #f7f3ea; padding: 24px 18px; }
+      nav h1 { margin: 0 0 24px; font-size: 1.3rem; line-height: 1.3; }
+      nav a { display: block; color: #f7f3ea; padding: 10px 12px; border-radius: 10px; margin-bottom: 6px; }
+      nav a.active, nav a:hover { background: rgba(255,255,255,0.12); text-decoration: none; }
+      nav .meta { margin-top: 22px; font-size: 0.92rem; color: #d8e2dc; }
+      main { padding: 28px; }
+      .hero { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; margin-bottom: 24px; }
+      .hero h2 { margin: 0 0 8px; font-size: 2rem; }
+      .hero p { margin: 0; color: var(--muted); }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; margin: 18px 0 24px; }
+      .card, .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 18px; padding: 18px; box-shadow: 0 8px 24px rgba(23,49,59,0.06); }
+      .card strong { display: block; font-size: 1.8rem; margin-bottom: 6px; }
+      .card span { color: var(--muted); }
+      .panel h3 { margin-top: 0; }
+      .grid-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
+      table { width: 100%; border-collapse: collapse; background: var(--panel); }
+      th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+      th { color: var(--muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.04em; }
+      .badge { display: inline-block; padding: 4px 10px; border-radius: 999px; font-size: 0.82rem; font-weight: 700; }
+      .badge.ok { background: #dff5f1; color: #156f64; }
+      .badge.warn { background: #fff1df; color: #9a4f02; }
+      .badge.fail { background: #fde6e7; color: #8f1d21; }
+      .badge.REMOVE_CANDIDATE { background: #fceae4; color: #ad4e23; }
+      .badge.RESTRICT_SCOPE { background: #e0eff7; color: #12597d; }
+      .badge.REORDER_CANDIDATE { background: #efe7fb; color: #6640a0; }
+      .badge.MERGE_CANDIDATE { background: #e4f4e6; color: #2d7a37; }
+      .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+      input, select, button, textarea { font: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: #fffdf8; }
+      button { background: var(--accent); color: white; cursor: pointer; }
+      button.secondary { background: #425466; }
+      .muted { color: var(--muted); }
+      pre { background: #13212b; color: #f5f7fa; padding: 16px; border-radius: 14px; overflow-x: auto; }
+      .list { margin: 0; padding-left: 18px; }
+      @media (max-width: 980px) {
+        .layout { grid-template-columns: 1fr; }
+        nav { position: sticky; top: 0; z-index: 2; }
+        .grid-2 { grid-template-columns: 1fr; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav>
+        <h1>fw-review<br>Remediation Cockpit</h1>
+        <a href="/" class="{% if current == 'overview' %}active{% endif %}">Overview</a>
+        <a href="/queue" class="{% if current == 'queue' %}active{% endif %}">Queue</a>
+        <a href="/runs" class="{% if current == 'runs' %}active{% endif %}">Runs</a>
+        <a href="/drift" class="{% if current == 'drift' %}active{% endif %}">Drift</a>
+        <a href="/settings" class="{% if current == 'settings' %}active{% endif %}">Settings</a>
+        <a href="/health" class="{% if current == 'health' %}active{% endif %}">Health</a>
+        <div class="meta">
+          {% if latest_run %}
+          <div>Latest run: <strong>{{ latest_run.run_id }}</strong></div>
+          <div>Validation: <span class="badge {{ 'ok' if latest_run.validation_summary == 'ok' else 'warn' if latest_run.validation_summary == 'warn' else 'fail' }}">{{ latest_run.validation_summary }}</span></div>
+          {% endif %}
+          {% if active_job %}
+          <div style="margin-top:12px;">Active job: <strong>{{ active_job.phase }}</strong></div>
+          <div>{{ active_job.message }}</div>
+          {% endif %}
+        </div>
+      </nav>
+      <main>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </body>
+</html>

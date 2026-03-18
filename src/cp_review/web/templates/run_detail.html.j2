@@ -1,0 +1,20 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Run {{ run.run_id }}</h2><p>{{ run.command }} · validation {{ run.validation_summary }}</p></div><div><a href="/queue?run_id={{ run.run_id }}">Open queue</a></div></div>
+<div class="cards">
+  <div class="card"><strong>{{ run.summary.findings_count or 0 }}</strong><span>Findings</span></div>
+  <div class="card"><strong>{{ run.summary.review_queue_count or 0 }}</strong><span>Queue</span></div>
+  <div class="card"><strong>{{ run.policy_health.overall.score if run.policy_health and run.policy_health.overall else 'n/a' }}</strong><span>Health</span></div>
+  <div class="card"><strong>{{ run.warnings | length }}</strong><span>Warnings</span></div>
+</div>
+<div class="grid-2">
+  <section class="panel">
+    <h3>Artifacts</h3>
+    <table><thead><tr><th>Name</th><th>Path</th></tr></thead><tbody>{% for artifact in run.artifacts %}<tr><td>{{ artifact.name }}</td><td>{{ artifact.path }}</td></tr>{% endfor %}</tbody></table>
+  </section>
+  <section class="panel">
+    <h3>Top Queue Items</h3>
+    <table><thead><tr><th>Rule</th><th>Action</th><th>Priority</th></tr></thead><tbody>{% for item in queue_items %}<tr><td><a href="/rules/{{ item.rule_uid }}?run_id={{ run.run_id }}">{{ item.rule_number }} · {{ item.rule_uid }}</a></td><td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td><td>{{ item.priority }}</td></tr>{% endfor %}</tbody></table>
+  </section>
+</div>
+{% endblock %}

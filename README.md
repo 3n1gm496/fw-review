@@ -29,16 +29,26 @@ The current enterprise path is built around:
 ```bash
 ./scripts/bootstrap.sh
 source .venv/bin/activate
-cp-review run --config config/settings.yaml
+cp-review web init --config config/settings.yaml
+cp-review web serve --config config/settings.yaml
 ```
 
 If you want to materialize config files manually instead of relying on `bootstrap.sh`, run:
 
 ```bash
 cp-review init
+cp-review web init --config config/settings.yaml
 ```
 
-`cp-review run` is the standard operator path. It performs collection, analysis, queue generation, HTML reporting, and run validation in one command.
+The web cockpit is now the standard operator path. It gives you:
+
+- overview and policy health
+- remediation queue with live review state
+- rule explainability and what-if simulation
+- run launch and sync from the UI
+- drift inspection and health checks
+
+`cp-review run` remains the standard non-web operator fallback. It performs collection, analysis, queue generation, HTML reporting, and run validation in one command.
 
 Update the environment variables named by the config file before the first live run:
 
@@ -50,6 +60,11 @@ export CP_MGMT_PASSWORD="replace_me"
 ## Advanced Commands
 
 ```bash
+cp-review web init --config config/settings.yaml
+cp-review web serve --config config/settings.yaml
+cp-review web doctor --config config/settings.yaml
+cp-review web sync --config config/settings.yaml
+cp-review web export-state --config config/settings.yaml --format yaml
 cp-review collect --config config/settings.yaml
 cp-review analyze --config config/settings.yaml
 cp-review queue --config config/settings.yaml
@@ -71,6 +86,7 @@ cp-review validate-run --config config/settings.yaml --strict
 make bootstrap
 make setup
 make run
+make web
 make check
 make sbom
 make audit
@@ -82,8 +98,51 @@ make benchmark
 - `make audit` runs dependency vulnerability scanning and fails on findings.
 - `make benchmark` runs a repeatable flattening benchmark for large-rulebase simulation.
 - `make run` executes the operator wrapper against `config/settings.yaml`.
+- `make web` launches the remediation cockpit on `127.0.0.1:8765`.
 - CI workflows under `.github/workflows/` run the same checks on pull requests.
 - See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
+
+## Web Cockpit
+
+The remediation cockpit is a local-first web app built around:
+
+- Python server-rendered HTML
+- SQLite for local UI/workflow state
+- filesystem artifacts as the source of truth for runs
+- a single-operator model for jump hosts and Linux workstations
+
+The default flow is:
+
+```bash
+cp-review web init --config config/settings.yaml
+cp-review web serve --config config/settings.yaml
+```
+
+Then open:
+
+```text
+http://127.0.0.1:8765
+```
+
+Public web commands:
+
+- `cp-review web init`: create `config/web.yaml`, initialize SQLite, and sync existing runs
+- `cp-review web serve`: start the remediation cockpit
+- `cp-review web doctor`: validate Python, config, CA bundle, templates, DB, and output path readiness
+- `cp-review web sync`: import run artifacts into SQLite
+- `cp-review web export-state`: export current review workflow state from SQLite to YAML/JSON
+
+Main pages:
+
+- `/`: overview, quick wins, latest run, policy health
+- `/queue`: remediation queue with filters and workflow state
+- `/runs`: indexed run history and manifest-backed validation
+- `/runs/<run_id>`: artifact and queue drill-down for one run
+- `/rules/<rule_uid>`: explainability and related-rule context
+- `/simulate/<rule_uid>`: what-if impact simulation
+- `/drift`: two-run comparison and regression view
+- `/settings`: core config, web config, and recent jobs
+- `/health`: cockpit doctor checks
 
 ## Outputs
 
@@ -103,6 +162,7 @@ make benchmark
 - `output/reports/<run_id>/drift.metrics.json`: drift command metrics
 - `output/reports/<run_id>/drift.provenance.json`: drift command provenance
 - `output/reports/<run_id>/run-manifest.json`: run completeness manifest for `collect`/`analyze`/`report`/`full-run`
+- `output/web/fw-review-web.db`: SQLite index for web queue, runs, jobs, and local workflow state
 - `cp-review validate-run` verifies manifest integrity, artifact hashes, queue consistency, and summary counts
 - `cp-review validate-run --strict` also fails on structural collection degradation such as `OBJECT_LOOKUP_FAILED`, `LOG_QUERY_FAILED`, and `NO_ACCESS_LAYERS`
 - partial `show-object` and `show-logs` failures are preserved as structured warnings in the dataset and run manifest instead of being silently lost
@@ -169,10 +229,8 @@ Each queue item includes:
 
 ```bash
 cp-review doctor --config config/settings.yaml --check-api
-cp-review run --config config/settings.yaml
-cp-review explain --config config/settings.yaml --rule-uid <rule_uid>
-cp-review simulate --config config/settings.yaml --rule-uid <rule_uid>
-cp-review review-state --config config/settings.yaml --rule-uid <rule_uid> --owner netops --campaign q2-cleanup --status assigned
+cp-review web init --config config/settings.yaml
+cp-review web serve --config config/settings.yaml
 cp-review compare --config config/settings.yaml --summary-html
 ```
 
@@ -187,6 +245,7 @@ Use `validate-run --strict` when you want the run to fail on structural degradat
 - Check Point response fields can vary across deployments and details levels. The project isolates uncertain schema handling in adapter helpers and preserves raw payloads for inspection.
 - Inline-layer handling is conservative in v1. Unsupported nested structures are marked in the normalized dataset and surfaced as warnings/findings instead of being silently dropped.
 - Targeted log queries rely on localized adapter assumptions and may need tuning against saved raw responses in a given environment.
+- The web cockpit is intentionally single-operator in v1 and does not implement auth/RBAC yet.
 
 ## Governance
 

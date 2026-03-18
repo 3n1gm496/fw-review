@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sys
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -20,11 +21,15 @@ from cp_review.validate_run import validate_run_manifest
 from cp_review.web.config import WebConfig, write_web_config
 from cp_review.web.db import (
     create_run_job,
+    export_ticket_drafts,
     get_active_run_job,
+    get_review_activity,
     import_run,
     init_db,
     latest_run_id,
+    list_runs,
     query_queue,
+    rebuild_db,
     record_explanation,
     record_simulation,
     update_queue_state,
@@ -129,6 +134,11 @@ def sync_runs(settings, web_config: WebConfig, *, run_id: str | None = None) -> 
     return {"summary": "ok" if not corrupted else "warn", "imported_runs": imported, "corrupted_manifests": corrupted}
 
 
+def rebuild_run_index(settings, web_config: WebConfig) -> dict[str, Any]:
+    rebuild_db(web_config.db_path)
+    return sync_runs(settings, web_config)
+
+
 def _reports_dir_for_run(settings, run_id: str) -> Path:
     return settings.collection.output_dir / "reports" / run_id
 
@@ -170,7 +180,12 @@ def build_drift(settings, *, previous_run_id: str | None = None, current_run_id:
     if not current_run_id or not previous_run_id:
         findings_files = sorted(reports_root.glob("*/findings.json"), key=lambda path: path.parent.name)
         if len(findings_files) < 2:
-            raise ValueError("Need at least two findings runs to build drift")
+            return {
+                "previous_run_id": previous_run_id,
+                "current_run_id": current_run_id,
+                "drift": None,
+                "message": "Need at least two findings runs to build drift.",
+            }
         previous_run_id = previous_run_id or findings_files[-2].parent.name
         current_run_id = current_run_id or findings_files[-1].parent.name
     previous = _load_json(reports_root / previous_run_id / "findings.json")
@@ -179,6 +194,7 @@ def build_drift(settings, *, previous_run_id: str | None = None, current_run_id:
         "previous_run_id": previous_run_id,
         "current_run_id": current_run_id,
         "drift": compare_findings(previous, current),
+        "message": "",
     }
 
 
@@ -221,6 +237,50 @@ def export_review_state(settings, web_config: WebConfig, *, run_id: str | None, 
     else:
         output_path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return output_path
+
+
+def export_ticket_queue(
+    web_config: WebConfig,
+    *,
+    run_id: str | None,
+    base_url: str,
+    output_path: Path,
+) -> Path:
+    payload = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "tickets": export_ticket_drafts(web_config.db_path, base_url=base_url, run_id=run_id),
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    return output_path
+
+
+def build_executive_summary(web_config: WebConfig) -> dict[str, Any]:
+    runs = list_runs(web_config.db_path, limit=20)
+    latest = runs[0] if runs else None
+    queue_items = query_queue(web_config.db_path, run_id=latest["run_id"], limit=1000) if latest else []
+    overdue = [item for item in queue_items if item.get("due_date") and item.get("review_status") not in {"done", "false_positive"}]
+    action_counts: dict[str, int] = {}
+    for item in queue_items:
+        action = str(item["action_type"])
+        action_counts[action] = action_counts.get(action, 0) + 1
+    trend = [
+        {
+            "run_id": run["run_id"],
+            "generated_at": run["generated_at"],
+            "queue_count": int(run["summary"].get("review_queue_count", 0)),
+            "findings_count": int(run["summary"].get("findings_count", 0)),
+            "health_score": ((run.get("policy_health") or {}).get("overall") or {}).get("score"),
+        }
+        for run in runs
+    ]
+    return {
+        "latest_run": latest,
+        "queue_action_counts": dict(sorted(action_counts.items())),
+        "overdue_count": len(overdue),
+        "activity": get_review_activity(web_config.db_path, run_id=latest["run_id"], limit=20) if latest else [],
+        "trend": trend,
+    }
 
 
 def start_run_job(settings, web_config: WebConfig, *, strict_validate: bool = True) -> dict[str, Any]:

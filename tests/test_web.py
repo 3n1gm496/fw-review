@@ -29,7 +29,7 @@ from cp_review.review_queue import (
 from cp_review.run_manifest import write_run_manifest
 from cp_review.web.app import WebApplication
 from cp_review.web.config import load_web_config
-from cp_review.web.db import get_run, query_queue
+from cp_review.web.db import get_review_activity, get_run, query_queue
 
 RUNNER = CliRunner()
 
@@ -242,7 +242,11 @@ def test_web_app_routes_and_review_state_api(tmp_path: Path):
     status, queue_html = _call_app(app_obj, method="GET", path="/queue?run_id=run-web-001")
     assert status == "200 OK"
     assert "Remediation Queue" in queue_html
-    assert "Allow Any to App" not in queue_html  # queue page is action-oriented, not raw rule dump
+    assert "Apply To Selected" in queue_html
+
+    status, executive_html = _call_app(app_obj, method="GET", path="/executive")
+    assert status == "200 OK"
+    assert "Executive Surface" in executive_html
 
     status, rule_json = _call_app(app_obj, method="GET", path="/api/rules/rule-1?run_id=run-web-001")
     assert status == "200 OK"
@@ -263,6 +267,17 @@ def test_web_app_routes_and_review_state_api(tmp_path: Path):
     updated_queue = query_queue(web_config.db_path, run_id="run-web-001")
     assert updated_queue[0]["review_status"] == "accepted"
     assert updated_queue[0]["owner"] == "secops"
+    assert get_review_activity(web_config.db_path, run_id="run-web-001")
+
+    status, artifact_body = _call_app(app_obj, method="GET", path="/artifacts/run-web-001/findings_json")
+    assert status == "200 OK"
+    assert "broad_allow" in artifact_body
+
+    status, export_body = _call_app(app_obj, method="POST", path="/api/tickets/export", body=json.dumps({"run_id": "run-web-001"}).encode("utf-8"))
+    assert status == "200 OK"
+    export_payload = json.loads(export_body)
+    assert export_payload["run_id"] == "run-web-001"
+    assert (tmp_path / "output" / "reports" / "run-web-001" / "ticket-drafts.json").exists()
 
 
 def test_web_serve_command_invokes_server(monkeypatch, tmp_path: Path):
@@ -283,3 +298,22 @@ def test_web_serve_command_invokes_server(monkeypatch, tmp_path: Path):
     assert called["host"] == "127.0.0.1"
     assert called["port"] == 8877
     assert str(called["path"]).endswith("config/web.yaml")
+
+
+def test_web_sync_rebuild_and_drift_fallback(tmp_path: Path):
+    config_path = _write_settings(tmp_path)
+    _seed_run(tmp_path)
+    RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
+
+    result = RUNNER.invoke(app, ["web", "sync", "--config", str(config_path), "--rebuild"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "ok"
+
+    settings = load_settings(config_path, require_credentials=False)
+    web_config = load_web_config(settings, config_path=tmp_path / "config" / "web.yaml")
+    app_obj = WebApplication(settings, web_config, web_config_path=tmp_path / "config" / "web.yaml")
+    status, drift_html = _call_app(app_obj, method="GET", path="/drift")
+    assert status == "200 OK"
+    assert "Need at least two findings runs" in drift_html

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import mimetypes
 from collections.abc import Callable, Iterable
 from pathlib import Path
 from typing import Any
@@ -13,7 +14,9 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from cp_review.web.db import get_active_run_job, get_recent_run_jobs, get_run, latest_run_id, list_runs, query_queue
 from cp_review.web.service import (
     build_drift,
+    build_executive_summary,
     explain_rule,
+    export_ticket_queue,
     persist_review_state,
     run_web_doctor,
     simulate_rule,
@@ -59,6 +62,19 @@ class WebApplication:
         start_response(status, [("Content-Type", "application/json"), ("Content-Length", str(len(body)))])
         return [body]
 
+    def _file_response(self, file_path: Path, start_response: StartResponse):
+        body = file_path.read_bytes()
+        content_type = mimetypes.guess_type(str(file_path))[0] or "application/octet-stream"
+        start_response(
+            "200 OK",
+            [
+                ("Content-Type", content_type),
+                ("Content-Length", str(len(body))),
+                ("Content-Disposition", f'inline; filename="{file_path.name}"'),
+            ],
+        )
+        return [body]
+
     def _read_body(self, environ: dict[str, Any]) -> dict[str, Any]:
         length = int(environ.get("CONTENT_LENGTH") or 0)
         body = environ["wsgi.input"].read(length) if length else b""
@@ -89,8 +105,15 @@ class WebApplication:
                 **self._base_context(current="overview"),
                 "runs": runs,
                 "overview": latest,
+                "executive": build_executive_summary(self.web_config),
             }
             return self._render("overview.html.j2", context, start_response)
+        if path == "/executive":
+            return self._render(
+                "executive.html.j2",
+                {**self._base_context(current="executive"), "executive": build_executive_summary(self.web_config)},
+                start_response,
+            )
         if path == "/runs":
             return self._render("runs.html.j2", {**self._base_context(current="runs"), "runs": list_runs(self.web_config.db_path, limit=50)}, start_response)
         if path.startswith("/runs/"):
@@ -111,9 +134,29 @@ class WebApplication:
                 "status": query.get("status") or None,
                 "owner": query.get("owner") or None,
                 "campaign": query.get("campaign") or None,
+                "sort_by": query.get("sort_by") or "priority",
+                "sort_dir": query.get("sort_dir") or "desc",
             }
-            items = query_queue(self.web_config.db_path, **filters, limit=500)
-            return self._render("queue.html.j2", {**self._base_context(current="queue"), "items": items, "filters": filters, "runs": list_runs(self.web_config.db_path, limit=20)}, start_response)
+            items = query_queue(
+                self.web_config.db_path,
+                run_id=filters["run_id"],
+                package=filters["package"],
+                layer=filters["layer"],
+                action_type=filters["action_type"],
+                priority=filters["priority"],
+                status=filters["status"],
+                owner=filters["owner"],
+                campaign=filters["campaign"],
+                sort_by=str(filters["sort_by"]),
+                sort_dir=str(filters["sort_dir"]),
+                limit=500,
+            )
+            activity = get_recent_run_jobs(self.web_config.db_path, limit=5)
+            return self._render(
+                "queue.html.j2",
+                {**self._base_context(current="queue"), "items": items, "filters": filters, "runs": list_runs(self.web_config.db_path, limit=20), "recent_jobs": activity},
+                start_response,
+            )
         if path.startswith("/rules/"):
             rule_uid = path.split("/", 2)[2]
             detail_run_id: str | None = query.get("run_id") or latest_run_id(self.web_config.db_path)
@@ -135,6 +178,18 @@ class WebApplication:
         if path == "/drift":
             drift = build_drift(self.settings, previous_run_id=query.get("previous_run_id"), current_run_id=query.get("current_run_id"))
             return self._render("drift.html.j2", {**self._base_context(current="drift"), **drift, "runs": list_runs(self.web_config.db_path, limit=20)}, start_response)
+        if path.startswith("/artifacts/"):
+            _, _, run_id, artifact_name = path.split("/", 3)
+            run = get_run(self.web_config.db_path, run_id)
+            if run is None:
+                return self._render("error.html.j2", {**self._base_context(current="runs"), "message": f"Run not found: {run_id}"}, start_response, "404 Not Found")
+            artifact = next((item for item in run["artifacts"] if item["name"] == artifact_name), None)
+            if artifact is None:
+                return self._render("error.html.j2", {**self._base_context(current="runs"), "message": f"Artifact not found: {artifact_name}"}, start_response, "404 Not Found")
+            artifact_path = Path(str(artifact["path"]))
+            if not artifact_path.exists():
+                return self._render("error.html.j2", {**self._base_context(current="runs"), "message": f"Artifact missing on disk: {artifact_name}"}, start_response, "404 Not Found")
+            return self._file_response(artifact_path, start_response)
         if path == "/settings":
             return self._render(
                 "settings.html.j2",
@@ -190,4 +245,15 @@ class WebApplication:
             payload = self._read_body(environ)
             response = build_drift(self.settings, previous_run_id=payload.get("previous_run_id") or None, current_run_id=payload.get("current_run_id") or None)
             return self._json_response(response, start_response)
+        if path == "/api/tickets/export" and method == "POST":
+            payload = self._read_body(environ)
+            run_id = payload.get("run_id") or latest_run_id(self.web_config.db_path)
+            output_path = self.settings.collection.output_dir / "reports" / str(run_id) / "ticket-drafts.json"
+            exported = export_ticket_queue(
+                self.web_config,
+                run_id=str(run_id) if run_id else None,
+                base_url=f"http://{self.web_config.host}:{self.web_config.port}",
+                output_path=output_path,
+            )
+            return self._json_response({"summary": "ok", "output_path": str(exported), "run_id": run_id}, start_response)
         return self._json_response({"summary": "fail", "error": f"Unsupported API route: {method} {path}"}, start_response, "404 Not Found")

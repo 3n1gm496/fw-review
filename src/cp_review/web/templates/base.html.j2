@@ -49,10 +49,15 @@
       .badge.REORDER_CANDIDATE { background: #efe7fb; color: #6640a0; }
       .badge.MERGE_CANDIDATE { background: #e4f4e6; color: #2d7a37; }
       .toolbar { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+      .toolbar form { display: contents; }
       input, select, button, textarea { font: inherit; border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: #fffdf8; }
       button { background: var(--accent); color: white; cursor: pointer; }
       button.secondary { background: #425466; }
+      button.warn { background: #9a4f02; }
       .muted { color: var(--muted); }
+      .stack { display: grid; gap: 18px; }
+      .inline-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      .callout { border-left: 4px solid var(--accent); padding: 12px 16px; background: var(--accent-soft); border-radius: 12px; }
       pre { background: #13212b; color: #f5f7fa; padding: 16px; border-radius: 14px; overflow-x: auto; }
       .list { margin: 0; padding-left: 18px; }
       @media (max-width: 980px) {
@@ -68,6 +73,7 @@
         <h1>fw-review<br>Remediation Cockpit</h1>
         <a href="/" class="{% if current == 'overview' %}active{% endif %}">Overview</a>
         <a href="/queue" class="{% if current == 'queue' %}active{% endif %}">Queue</a>
+        <a href="/executive" class="{% if current == 'executive' %}active{% endif %}">Executive</a>
         <a href="/runs" class="{% if current == 'runs' %}active{% endif %}">Runs</a>
         <a href="/drift" class="{% if current == 'drift' %}active{% endif %}">Drift</a>
         <a href="/settings" class="{% if current == 'settings' %}active{% endif %}">Settings</a>

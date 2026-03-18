@@ -51,7 +51,9 @@ from cp_review.web.service import (
     export_review_state as export_web_review_state,
 )
 from cp_review.web.service import (
+    export_ticket_queue,
     init_web_workspace,
+    rebuild_run_index,
     run_web_doctor,
 )
 from cp_review.web.service import (
@@ -561,13 +563,14 @@ def web_doctor_command(
 def web_sync(
     config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
     run_id: str | None = typer.Option(None, "--run-id", help="Optional single run to sync."),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Rebuild the local SQLite index before importing runs."),
     env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
 ) -> None:
     """Import run artifacts into the local SQLite web index."""
     configure_logging()
     settings = _load_config(config, env_file, None, None, None, require_credentials=False)
     web_config = load_web_config(settings, config_path=_web_config_path(config))
-    report = sync_web_runs(settings, web_config, run_id=run_id)
+    report = rebuild_run_index(settings, web_config) if rebuild else sync_web_runs(settings, web_config, run_id=run_id)
     typer.echo(json.dumps(report, indent=2, sort_keys=True))
 
 
@@ -590,6 +593,25 @@ def web_export_state(
         suffix = "json" if format_name == "json" else "yaml"
         output_path = settings.collection.output_dir / "reports" / selected_run_id / f"review-state.export.{suffix}"
     path = export_web_review_state(settings, web_config, run_id=selected_run_id, format_name=format_name, output_path=output_path)
+    typer.echo(json.dumps({"summary": "ok", "output_path": str(path), "run_id": selected_run_id}, indent=2, sort_keys=True))
+
+
+@web_app.command("export-tickets")
+def web_export_tickets(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Optional run ID to export ticket drafts for."),
+    base_url: str = typer.Option("http://127.0.0.1:8765", "--base-url", help="Base URL for deep links in exported drafts."),
+    output_path: Path | None = typer.Option(None, "--output-path", dir_okay=False, help="Optional destination JSON path."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Export ticket-ready drafts from the remediation queue."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    selected_run_id = run_id or _latest_run_manifest(settings.collection.output_dir / "reports").parent.name
+    if output_path is None:
+        output_path = settings.collection.output_dir / "reports" / selected_run_id / "ticket-drafts.json"
+    path = export_ticket_queue(web_config, run_id=selected_run_id, base_url=base_url, output_path=output_path)
     typer.echo(json.dumps({"summary": "ok", "output_path": str(path), "run_id": selected_run_id}, indent=2, sort_keys=True))
 
 

@@ -173,3 +173,45 @@ class ReviewStateEntry(BaseModel):
     due_date: datetime | None = None
     notes: str = ""
     updated_at: datetime
+
+
+class ReviewActivity(BaseModel):
+    """Audit entry for a workflow change on one remediation item."""
+
+    run_id: str
+    item_id: str
+    rule_uid: str
+    status: str
+    owner: str = ""
+    campaign: str = ""
+    notes: str = ""
+    changed_at: datetime
+
+
+class TicketDraft(BaseModel):
+    """Portable ticket payload derived from one remediation item."""
+
+    item_id: str
+    run_id: str
+    title: str
+    description: str
+    action_type: str
+    rule_uid: str
+    package_name: str
+    layer_name: str
+    priority: str
+    confidence: int
+    risk_score: int
+    owner: str = ""
+    campaign: str = ""
+    deep_link: str = ""
+
+
+class TicketLink(BaseModel):
+    """State of an externally exported remediation item."""
+
+    item_id: str
+    provider: str
+    external_id: str = ""
+    state: str = "local_only"
+    synced_at: datetime | None = None

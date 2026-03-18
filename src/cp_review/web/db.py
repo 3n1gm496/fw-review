@@ -3,15 +3,20 @@
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from cp_review.review_queue import ReviewQueueItem, ReviewStateEntry
+from cp_review.models import ReviewActivity, ReviewQueueItem, ReviewStateEntry, TicketDraft
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
+CREATE TABLE IF NOT EXISTS schema_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS runs (
     run_id TEXT PRIMARY KEY,
     command TEXT NOT NULL,
@@ -85,11 +90,25 @@ CREATE TABLE IF NOT EXISTS explain_history (
     requested_at TEXT NOT NULL,
     payload_json TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS review_activity (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    rule_uid TEXT NOT NULL,
+    status TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    campaign TEXT NOT NULL,
+    notes TEXT NOT NULL,
+    changed_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_queue_run_id ON queue_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_queue_rule_uid ON queue_items(rule_uid);
 CREATE INDEX IF NOT EXISTS idx_queue_status ON queue_items(review_status);
 CREATE INDEX IF NOT EXISTS idx_runs_generated_at ON runs(generated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_activity_run_id ON review_activity(run_id);
 """
+
+SCHEMA_VERSION = "2"
 
 
 def _now() -> str:
@@ -106,8 +125,20 @@ def connect(db_path: Path) -> sqlite3.Connection:
 def init_db(db_path: Path) -> Path:
     with connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        conn.execute(
+            "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "
+            "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (SCHEMA_VERSION,),
+        )
         conn.commit()
     return db_path
+
+
+def rebuild_db(db_path: Path) -> Path:
+    """Drop the current SQLite file and recreate it from scratch."""
+    if db_path.exists():
+        shutil.move(str(db_path), str(db_path.with_suffix(".bak")))
+    return init_db(db_path)
 
 
 def _load_existing_state(conn: sqlite3.Connection, run_id: str) -> dict[str, dict[str, str]]:
@@ -303,6 +334,8 @@ def query_queue(
     status: str | None = None,
     owner: str | None = None,
     campaign: str | None = None,
+    sort_by: str = "priority",
+    sort_dir: str = "desc",
     limit: int = 500,
 ) -> list[dict[str, Any]]:
     init_db(db_path)
@@ -333,10 +366,21 @@ def query_queue(
         clauses.append("campaign = ?")
         values.append(campaign)
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    order_map = {
+        "priority": "CASE priority WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END",
+        "risk": "risk_score",
+        "confidence": "confidence",
+        "rule_number": "rule_number",
+        "package": "package_name",
+        "status": "review_status",
+        "updated_at": "updated_at",
+    }
+    order_expr = order_map.get(sort_by, order_map["priority"])
+    direction = "ASC" if sort_dir == "asc" else "DESC"
     query = (
         "SELECT * FROM queue_items "
         f"{where} "
-        "ORDER BY CASE priority WHEN 'critical' THEN 4 WHEN 'high' THEN 3 WHEN 'medium' THEN 2 ELSE 1 END DESC, confidence DESC, risk_score DESC, package_name, layer_name, rule_number LIMIT ?"
+        f"ORDER BY {order_expr} {direction}, confidence DESC, risk_score DESC, package_name, layer_name, rule_number LIMIT ?"
     )
     values.append(limit)
     with connect(db_path) as conn:
@@ -394,10 +438,29 @@ def update_queue_state(
     fields.append("updated_at = ?")
     updates.append(_now())
     with connect(db_path) as conn:
+        selected_rows = conn.execute(
+            f"SELECT item_id, run_id, rule_uid, review_status, owner, campaign, notes FROM queue_items WHERE {selectors}",
+            tuple(values),
+        ).fetchall()
         cursor = conn.execute(
             f"UPDATE queue_items SET {', '.join(fields)} WHERE {selectors}",
             tuple(updates + values),
         )
+        changed_at = _now()
+        for row in selected_rows:
+            conn.execute(
+                "INSERT INTO review_activity(run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    str(row["run_id"]),
+                    str(row["item_id"]),
+                    str(row["rule_uid"]),
+                    status if status is not None else str(row["review_status"]),
+                    owner if owner is not None else str(row["owner"] or ""),
+                    campaign if campaign is not None else str(row["campaign"] or ""),
+                    notes if notes is not None else str(row["notes"] or ""),
+                    changed_at,
+                ),
+            )
         conn.commit()
         return int(cursor.rowcount)
 
@@ -496,6 +559,19 @@ def get_recent_run_jobs(db_path: Path, *, limit: int = 10) -> list[dict[str, Any
     return result
 
 
+def get_review_activity(db_path: Path, *, run_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    init_db(db_path)
+    where = "WHERE run_id = ?" if run_id else ""
+    values: tuple[Any, ...] = (run_id, limit) if run_id else (limit,)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            f"SELECT run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at "
+            f"FROM review_activity {where} ORDER BY changed_at DESC LIMIT ?",
+            values,
+        ).fetchall()
+    return [ReviewActivity.model_validate(dict(row)).model_dump(mode="json") for row in rows]
+
+
 def export_review_state(db_path: Path, *, run_id: str | None = None) -> dict[str, Any]:
     init_db(db_path)
     items = query_queue(db_path, run_id=run_id, limit=5000)
@@ -519,3 +595,33 @@ def export_review_state(db_path: Path, *, run_id: str | None = None) -> dict[str
         "generated_at": now,
         "entries": [entry.model_dump(mode="json") for entry in entries],
     }
+
+
+def export_ticket_drafts(
+    db_path: Path,
+    *,
+    base_url: str,
+    run_id: str | None = None,
+    limit: int = 1000,
+) -> list[dict[str, Any]]:
+    items = query_queue(db_path, run_id=run_id, limit=limit)
+    drafts: list[dict[str, Any]] = []
+    for item in items:
+        draft = TicketDraft(
+            item_id=str(item["item_id"]),
+            run_id=str(item["run_id"]),
+            title=f"[{item['action_type']}] {item['package_name']}/{item['layer_name']} rule {item['rule_number']}",
+            description=f"{item['why_flagged']}\n\nSuggested next step: {item['suggested_next_step']}",
+            action_type=str(item["action_type"]),
+            rule_uid=str(item["rule_uid"]),
+            package_name=str(item["package_name"]),
+            layer_name=str(item["layer_name"]),
+            priority=str(item["priority"]),
+            confidence=int(item["confidence"]),
+            risk_score=int(item["risk_score"]),
+            owner=str(item.get("owner") or ""),
+            campaign=str(item.get("campaign") or ""),
+            deep_link=f"{base_url.rstrip('/')}/rules/{item['rule_uid']}?run_id={item['run_id']}",
+        )
+        drafts.append(draft.model_dump(mode="json"))
+    return drafts

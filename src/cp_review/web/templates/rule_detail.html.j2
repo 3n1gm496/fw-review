@@ -14,12 +14,35 @@
     <p class="muted">Related rules: {{ payload.related_rules | join(', ') if payload.related_rules else 'none' }}</p>
   </section>
   <section class="panel">
-    <h3>Queue</h3>
+    <h3>Queue Workflow</h3>
     <table><thead><tr><th>Action</th><th>Priority</th><th>Next Step</th></tr></thead><tbody>{% for item in payload.queue_items %}<tr><td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td><td>{{ item.priority }}</td><td>{{ item.suggested_next_step }}</td></tr>{% else %}<tr><td colspan="3">No queue items.</td></tr>{% endfor %}</tbody></table>
+    {% if payload.queue_items %}
+    <div class="inline-form" style="margin-top:14px;">
+      <select id="detail-status">{% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
+      <input id="detail-owner" placeholder="owner">
+      <input id="detail-campaign" placeholder="campaign">
+      <button type="button" onclick="updateRuleState()">Update Rule Workflow</button>
+    </div>
+    {% endif %}
   </section>
 </div>
 <section class="panel">
   <h3>Findings Payload</h3>
   <pre>{{ payload.findings | tojson(indent=2) }}</pre>
 </section>
+<script>
+async function updateRuleState() {
+  await fetch('/api/review-state', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      rule_uid: '{{ payload.rule.rule_uid }}',
+      status: document.getElementById('detail-status').value,
+      owner: document.getElementById('detail-owner').value,
+      campaign: document.getElementById('detail-campaign').value,
+    }),
+  });
+  window.location.reload();
+}
+</script>
 {% endblock %}

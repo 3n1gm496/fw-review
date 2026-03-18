@@ -65,6 +65,7 @@ cp-review web serve --config config/settings.yaml
 cp-review web doctor --config config/settings.yaml
 cp-review web sync --config config/settings.yaml
 cp-review web export-state --config config/settings.yaml --format yaml
+cp-review web export-tickets --config config/settings.yaml
 cp-review collect --config config/settings.yaml
 cp-review analyze --config config/settings.yaml
 cp-review queue --config config/settings.yaml
@@ -129,13 +130,15 @@ Public web commands:
 - `cp-review web init`: create `config/web.yaml`, initialize SQLite, and sync existing runs
 - `cp-review web serve`: start the remediation cockpit
 - `cp-review web doctor`: validate Python, config, CA bundle, templates, DB, and output path readiness
-- `cp-review web sync`: import run artifacts into SQLite
+- `cp-review web sync`: import run artifacts into SQLite, with `--rebuild` support for full index reconstruction
 - `cp-review web export-state`: export current review workflow state from SQLite to YAML/JSON
+- `cp-review web export-tickets`: export ticket-ready remediation drafts with deep links back into the cockpit
 
 Main pages:
 
 - `/`: overview, quick wins, latest run, policy health
 - `/queue`: remediation queue with filters and workflow state
+- `/executive`: KPI/trend surface for leadership and cleanup sponsors
 - `/runs`: indexed run history and manifest-backed validation
 - `/runs/<run_id>`: artifact and queue drill-down for one run
 - `/rules/<rule_uid>`: explainability and related-rule context
@@ -163,6 +166,7 @@ Main pages:
 - `output/reports/<run_id>/drift.provenance.json`: drift command provenance
 - `output/reports/<run_id>/run-manifest.json`: run completeness manifest for `collect`/`analyze`/`report`/`full-run`
 - `output/web/fw-review-web.db`: SQLite index for web queue, runs, jobs, and local workflow state
+- `output/reports/<run_id>/ticket-drafts.json`: ticket-ready export generated from the current remediation shortlist
 - `cp-review validate-run` verifies manifest integrity, artifact hashes, queue consistency, and summary counts
 - `cp-review validate-run --strict` also fails on structural collection degradation such as `OBJECT_LOOKUP_FAILED`, `LOG_QUERY_FAILED`, and `NO_ACCESS_LAYERS`
 - partial `show-object` and `show-logs` failures are preserved as structured warnings in the dataset and run manifest instead of being silently lost
@@ -180,6 +184,7 @@ On top of that, the current operator workflow also includes:
 - `top remediation actions` for fast cleanup campaign triage
 - local `review-state` ownership and campaign metadata
 - `simulate` output to estimate whether a rule looks covered before removal
+- ticket-ready export drafts for downstream Jira/ServiceNow-style workflows
 
 ## What The Engine Checks
 
@@ -239,6 +244,11 @@ Use `validate-run --strict` when you want the run to fail on structural degradat
 - partial object enrichment failures
 - targeted log collection failures
 - packages without access layers
+
+## Current Enterprise Notes
+
+- Git operations are expected to run over HTTPS with GitHub CLI-backed credentials, not SSH.
+- The cockpit remains local-first in the current release, but it now includes stronger queue workflow, executive KPIs, artifact viewing, rebuildable SQLite state, and ticket-draft export.
 
 ## Caveats
 

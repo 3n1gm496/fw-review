@@ -10,11 +10,11 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Artifacts</h3>
-    <table><thead><tr><th>Name</th><th>Path</th></tr></thead><tbody>{% for artifact in run.artifacts %}<tr><td>{{ artifact.name }}</td><td>{{ artifact.path }}</td></tr>{% endfor %}</tbody></table>
+    <table><thead><tr><th>Name</th><th>Open</th><th>Path</th></tr></thead><tbody>{% for artifact in run.artifacts %}<tr><td>{{ artifact.name }}</td><td><a href="/artifacts/{{ run.run_id }}/{{ artifact.name }}">view</a></td><td>{{ artifact.path }}</td></tr>{% endfor %}</tbody></table>
   </section>
   <section class="panel">
     <h3>Top Queue Items</h3>
-    <table><thead><tr><th>Rule</th><th>Action</th><th>Priority</th></tr></thead><tbody>{% for item in queue_items %}<tr><td><a href="/rules/{{ item.rule_uid }}?run_id={{ run.run_id }}">{{ item.rule_number }} · {{ item.rule_uid }}</a></td><td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td><td>{{ item.priority }}</td></tr>{% endfor %}</tbody></table>
+    <table><thead><tr><th>Rule</th><th>Action</th><th>Priority</th></tr></thead><tbody>{% for item in queue_items %}<tr><td><a href="/rules/{{ item.rule_uid }}?run_id={{ run.run_id }}">{{ item.rule_number }} · {{ item.rule_uid }}</a></td><td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td><td>{{ item.priority }}</td></tr>{% else %}<tr><td colspan="3">No queue items indexed.</td></tr>{% endfor %}</tbody></table>
   </section>
 </div>
 {% endblock %}

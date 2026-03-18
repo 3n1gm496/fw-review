@@ -1,0 +1,24 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Executive Surface</h2><p>Health, queue aging, campaign motion and trend visibility for leadership and cleanup sponsors.</p></div></div>
+<div class="cards">
+  <div class="card"><strong>{{ executive.latest_run.run_id if executive.latest_run else 'n/a' }}</strong><span>Latest Run</span></div>
+  <div class="card"><strong>{{ executive.latest_run.policy_health.overall.score if executive.latest_run and executive.latest_run.policy_health and executive.latest_run.policy_health.overall else 'n/a' }}</strong><span>Health Score</span></div>
+  <div class="card"><strong>{{ executive.overdue_count }}</strong><span>Overdue Items</span></div>
+  <div class="card"><strong>{{ executive.queue_action_counts | length }}</strong><span>Action Buckets</span></div>
+</div>
+<div class="grid-2">
+  <section class="panel">
+    <h3>Queue Action Mix</h3>
+    <pre>{{ executive.queue_action_counts | tojson(indent=2) }}</pre>
+  </section>
+  <section class="panel">
+    <h3>Recent Workflow Activity</h3>
+    <pre>{{ executive.activity | tojson(indent=2) }}</pre>
+  </section>
+</div>
+<section class="panel">
+  <h3>Trend</h3>
+  <pre>{{ executive.trend | tojson(indent=2) }}</pre>
+</section>
+{% endblock %}

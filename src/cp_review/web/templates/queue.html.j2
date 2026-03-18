@@ -1,35 +1,118 @@
 {% extends "base.html.j2" %}
 {% block content %}
-<div class="hero"><div><h2>Remediation Queue</h2><p>Action-oriented triage with current review workflow state.</p></div></div>
+<div class="hero"><div><h2>Remediation Queue</h2><p>Action-oriented triage with sortable workflow state, bulk updates and export-ready queue control.</p></div></div>
 <form class="toolbar" method="get" action="/queue">
   <select name="run_id">
     {% for run in runs %}<option value="{{ run.run_id }}" {% if filters.run_id == run.run_id %}selected{% endif %}>{{ run.run_id }}</option>{% endfor %}
   </select>
   <input name="package" placeholder="Package" value="{{ filters.package or '' }}">
   <input name="layer" placeholder="Layer" value="{{ filters.layer or '' }}">
-  <select name="action_type"><option value="">Action</option><option value="REMOVE_CANDIDATE">Remove</option><option value="RESTRICT_SCOPE">Restrict</option><option value="REORDER_CANDIDATE">Reorder</option><option value="MERGE_CANDIDATE">Merge</option></select>
-  <select name="priority"><option value="">Priority</option><option value="critical">Critical</option><option value="high">High</option><option value="medium">Medium</option><option value="low">Low</option></select>
-  <select name="status"><option value="">Status</option><option value="new">New</option><option value="accepted">Accepted</option><option value="false_positive">False positive</option><option value="needs_owner_input">Needs owner</option><option value="deferred">Deferred</option><option value="done">Done</option></select>
+  <select name="action_type">
+    <option value="">Action</option>
+    <option value="REMOVE_CANDIDATE" {% if filters.action_type == 'REMOVE_CANDIDATE' %}selected{% endif %}>Remove</option>
+    <option value="RESTRICT_SCOPE" {% if filters.action_type == 'RESTRICT_SCOPE' %}selected{% endif %}>Restrict</option>
+    <option value="REORDER_CANDIDATE" {% if filters.action_type == 'REORDER_CANDIDATE' %}selected{% endif %}>Reorder</option>
+    <option value="MERGE_CANDIDATE" {% if filters.action_type == 'MERGE_CANDIDATE' %}selected{% endif %}>Merge</option>
+  </select>
+  <select name="priority">
+    <option value="">Priority</option>
+    <option value="critical" {% if filters.priority == 'critical' %}selected{% endif %}>Critical</option>
+    <option value="high" {% if filters.priority == 'high' %}selected{% endif %}>High</option>
+    <option value="medium" {% if filters.priority == 'medium' %}selected{% endif %}>Medium</option>
+    <option value="low" {% if filters.priority == 'low' %}selected{% endif %}>Low</option>
+  </select>
+  <select name="status">
+    <option value="">Status</option>
+    {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}
+    <option value="{{ option }}" {% if filters.status == option %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  <select name="sort_by">
+    {% for option in ['priority','risk','confidence','rule_number','package','status','updated_at'] %}
+    <option value="{{ option }}" {% if filters.sort_by == option %}selected{% endif %}>sort: {{ option }}</option>
+    {% endfor %}
+  </select>
+  <select name="sort_dir">
+    <option value="desc" {% if filters.sort_dir == 'desc' %}selected{% endif %}>desc</option>
+    <option value="asc" {% if filters.sort_dir == 'asc' %}selected{% endif %}>asc</option>
+  </select>
   <button type="submit">Filter</button>
 </form>
+
+<section class="panel">
+  <div class="callout">Use bulk update to move cleanup work through a campaign, then export ticket drafts when the shortlist is stable.</div>
+</section>
+
+<section class="panel">
+  <h3>Bulk Update</h3>
+  <div class="inline-form">
+    <select id="bulk-status">
+      {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+    </select>
+    <input id="bulk-owner" placeholder="owner">
+    <input id="bulk-campaign" placeholder="campaign">
+    <input id="bulk-notes" placeholder="notes">
+    <button type="button" onclick="applyBulkUpdate()">Apply To Selected</button>
+    <button type="button" class="secondary" onclick="exportTickets()">Export Ticket Drafts</button>
+  </div>
+</section>
+
 <section class="panel">
   <table>
-    <thead><tr><th>Rule</th><th>Action</th><th>Priority</th><th>Status</th><th>Owner</th><th>Campaign</th><th>Why</th></tr></thead>
+    <thead><tr><th></th><th>Rule</th><th>Action</th><th>Priority</th><th>Status</th><th>Owner</th><th>Campaign</th><th>Confidence</th><th>Why</th></tr></thead>
     <tbody>
       {% for item in items %}
       <tr>
+        <td><input type="checkbox" class="queue-item" value="{{ item.item_id }}"></td>
         <td><a href="/rules/{{ item.rule_uid }}?run_id={{ item.run_id }}">{{ item.package_name }}/{{ item.layer_name }} #{{ item.rule_number }}</a></td>
         <td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td>
         <td>{{ item.priority }}</td>
         <td>{{ item.review_status }}</td>
         <td>{{ item.owner }}</td>
         <td>{{ item.campaign }}</td>
+        <td>{{ item.confidence }}</td>
         <td>{{ item.why_flagged }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7">No queue items matched the selected filters.</td></tr>
+      <tr><td colspan="9">No queue items matched the selected filters.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </section>
+
+<section class="panel">
+  <h3>Recent Jobs</h3>
+  <pre>{{ recent_jobs | tojson(indent=2) }}</pre>
+</section>
+
+<script>
+async function applyBulkUpdate() {
+  const itemIds = Array.from(document.querySelectorAll('.queue-item:checked')).map((item) => item.value);
+  if (!itemIds.length) {
+    window.alert('Select at least one remediation item first.');
+    return;
+  }
+  const payload = {
+    item_ids: itemIds,
+    status: document.getElementById('bulk-status').value,
+    owner: document.getElementById('bulk-owner').value,
+    campaign: document.getElementById('bulk-campaign').value,
+    notes: document.getElementById('bulk-notes').value,
+  };
+  await fetch('/api/review-state', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  window.location.reload();
+}
+async function exportTickets() {
+  await fetch('/api/tickets/export', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({run_id: '{{ filters.run_id }}'}),
+  });
+  window.alert('Ticket drafts exported to the current run directory.');
+}
+</script>
 {% endblock %}

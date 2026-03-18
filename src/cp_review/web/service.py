@@ -30,8 +30,10 @@ from cp_review.web.db import (
     export_shared_state_snapshot,
     export_ticket_drafts,
     get_active_run_job,
+    get_campaign,
     get_review_activity,
     get_session,
+    get_user_role,
     import_run,
     init_db,
     latest_run_id,
@@ -40,6 +42,7 @@ from cp_review.web.db import (
     list_review_comments,
     list_review_state_entries,
     list_runs,
+    list_users,
     query_queue,
     rebuild_db,
     record_explanation,
@@ -159,18 +162,30 @@ def create_or_update_campaign(
     status: str = "active",
     due_date: str | None = None,
 ) -> dict[str, Any]:
+    if not campaign_key.strip():
+        raise ValueError("campaign_key must not be blank")
+    if not name.strip():
+        raise ValueError("campaign name must not be blank")
+    owner_role = get_user_role(web_config.db_path, owner.strip())
+    if owner_role is None or owner_role.get("disabled"):
+        raise ValueError(f"unknown campaign owner: {owner}")
     return upsert_campaign(
         web_config.db_path,
-        campaign_key=campaign_key,
-        name=name,
-        owner=owner,
-        summary=summary,
+        campaign_key=campaign_key.strip(),
+        name=name.strip(),
+        owner=owner.strip(),
+        summary=summary.strip(),
         status=status,
         due_date=due_date,
     )
 
 
 def add_shared_campaign_member(web_config: WebConfig, *, campaign_key: str, username: str, role: str = "member") -> dict[str, Any]:
+    if get_campaign(web_config.db_path, campaign_key.strip()) is None:
+        raise ValueError(f"unknown campaign: {campaign_key}")
+    user = get_user_role(web_config.db_path, username.strip())
+    if user is None or user.get("disabled"):
+        raise ValueError(f"unknown campaign member: {username}")
     return add_campaign_member(web_config.db_path, campaign_key=campaign_key, username=username, role=role)
 
 
@@ -202,11 +217,13 @@ def get_rule_comments(web_config: WebConfig, *, item_id: str | None = None, run_
 
 
 def session_health(web_config: WebConfig) -> dict[str, Any]:
-    users = len(export_shared_state_snapshot(web_config.db_path).get("users", []))
+    users_payload = list_users(web_config.db_path)
+    users = len(users_payload)
     return {
         "shared_mode": web_config.shared_mode,
         "user_count": users,
         "has_users": users > 0,
+        "active_user_count": len([user for user in users_payload if not user.get("disabled")]),
         "session_ttl_hours": web_config.session_ttl_hours,
     }
 

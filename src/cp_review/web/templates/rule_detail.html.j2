@@ -49,7 +49,7 @@
     </div>
     <div class="inline-form" style="margin-top:14px;">
       <select id="detail-status">{% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
-      <select id="detail-approval">{% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
+      <select id="detail-approval" {% if current_user.role not in ['approver','admin'] %}disabled{% endif %}>{% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
       <input id="detail-owner" placeholder="owner">
       <input id="detail-campaign" placeholder="campaign">
       <button type="button" onclick="updateRuleState()">Update workflow</button>
@@ -135,16 +135,20 @@
 
 <script>
 async function updateRuleState() {
+  const payload = {
+    rule_uid: '{{ payload.rule.rule_uid }}',
+    status: document.getElementById('detail-status').value,
+    approval_status: document.getElementById('detail-approval').value,
+    owner: document.getElementById('detail-owner').value,
+    campaign: document.getElementById('detail-campaign').value,
+  };
+  if (document.getElementById('detail-approval').disabled) {
+    delete payload.approval_status;
+  }
   const response = await fetch('/api/review-state', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      rule_uid: '{{ payload.rule.rule_uid }}',
-      status: document.getElementById('detail-status').value,
-      approval_status: document.getElementById('detail-approval').value,
-      owner: document.getElementById('detail-owner').value,
-      campaign: document.getElementById('detail-campaign').value,
-    }),
+    body: JSON.stringify(payload),
   });
   const body = await response.json();
   if (!response.ok) {

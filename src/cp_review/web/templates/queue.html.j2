@@ -66,6 +66,7 @@
     <div class="small muted">
       {% if current_user.role in ['reviewer','approver','admin'] %}
       Bulk update and ticket export are enabled for your role.
+      {% if current_user.role not in ['approver','admin'] %}<br>Approval changes still require an approver or admin.{% endif %}
       {% else %}
       Viewer role: queue mutation and ticket export stay disabled.
       {% endif %}
@@ -80,7 +81,7 @@
     <select id="bulk-status">
       {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
     </select>
-    <select id="bulk-approval">
+    <select id="bulk-approval" {% if current_user.role not in ['approver','admin'] %}disabled{% endif %}>
       {% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
     </select>
     <input id="bulk-owner" placeholder="owner">
@@ -186,6 +187,9 @@ async function applyBulkUpdate() {
     campaign: document.getElementById('bulk-campaign').value,
     notes: document.getElementById('bulk-notes').value,
   };
+  if (document.getElementById('bulk-approval').disabled) {
+    delete payload.approval_status;
+  }
   const response = await fetch('/api/review-state', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},

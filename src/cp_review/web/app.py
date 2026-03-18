@@ -30,6 +30,7 @@ from cp_review.web.service import (
     persist_review_state,
     resolve_session,
     run_web_doctor,
+    session_health,
     simulate_rule,
     start_run_job,
     sync_runs,
@@ -326,13 +327,18 @@ class WebApplication:
                     **self._base_context(current="settings", session=session),
                     "settings": self.settings.sanitized_summary(),
                     "web_config": self.web_config.model_dump(mode="json"),
+                    "session_health": session_health(self.web_config),
                     "recent_jobs": get_recent_run_jobs(self.web_config.db_path),
                 },
                 start_response,
             )
         if path == "/health":
             report = run_web_doctor(self.settings, self.web_config, web_config_path=self.web_config_path)
-            return self._render("health.html.j2", {**self._base_context(current="health", session=session), "report": report}, start_response)
+            return self._render(
+                "health.html.j2",
+                {**self._base_context(current="health", session=session), "report": report, "session_health": session_health(self.web_config)},
+                start_response,
+            )
         return self._render("error.html.j2", {**self._base_context(current="unknown", session=session), "message": f"Unknown route: {path}"}, start_response, "404 Not Found")
 
     def _dispatch_api(self, method: str, path: str, query: dict[str, str], environ: dict[str, Any], start_response: StartResponse, session: dict[str, Any]):
@@ -353,6 +359,9 @@ class WebApplication:
             if not ensure_role(session, "reviewer"):
                 return self._json_response({"summary": "fail", "error": "Reviewer role required"}, start_response, "403 Forbidden")
             payload = self._read_body(environ)
+            approval_value = payload.get("approval_status")
+            if approval_value not in (None, "", []) and not ensure_role(session, "approver"):
+                return self._json_response({"summary": "fail", "error": "Approver role required for approval changes"}, start_response, "403 Forbidden")
             item_ids = payload.get("item_ids")
             if isinstance(item_ids, str):
                 item_ids = [item_ids]
@@ -427,25 +436,31 @@ class WebApplication:
             if not ensure_role(session, "reviewer"):
                 return self._json_response({"summary": "fail", "error": "Reviewer role required"}, start_response, "403 Forbidden")
             payload = self._read_body(environ)
-            created = create_or_update_campaign(
-                self.web_config,
-                campaign_key=str(payload["campaign_key"]),
-                name=str(payload.get("name") or payload["campaign_key"]),
-                owner=str(payload.get("owner") or session["username"]),
-                summary=str(payload.get("summary") or ""),
-                status=str(payload.get("status") or "active"),
-                due_date=str(payload["due_date"]) if payload.get("due_date") else None,
-            )
+            try:
+                created = create_or_update_campaign(
+                    self.web_config,
+                    campaign_key=str(payload["campaign_key"]),
+                    name=str(payload.get("name") or payload["campaign_key"]),
+                    owner=str(payload.get("owner") or session["username"]),
+                    summary=str(payload.get("summary") or ""),
+                    status=str(payload.get("status") or "active"),
+                    due_date=str(payload["due_date"]) if payload.get("due_date") else None,
+                )
+            except ValueError as exc:
+                return self._json_response({"summary": "fail", "error": str(exc)}, start_response, "400 Bad Request")
             return self._json_response({"summary": "ok", "campaign": created}, start_response)
         if path == "/api/campaign-members" and method == "POST":
             if not ensure_role(session, "reviewer"):
                 return self._json_response({"summary": "fail", "error": "Reviewer role required"}, start_response, "403 Forbidden")
             payload = self._read_body(environ)
-            created = add_shared_campaign_member(
-                self.web_config,
-                campaign_key=str(payload["campaign_key"]),
-                username=str(payload["username"]),
-                role=str(payload.get("role") or "member"),
-            )
+            try:
+                created = add_shared_campaign_member(
+                    self.web_config,
+                    campaign_key=str(payload["campaign_key"]),
+                    username=str(payload["username"]),
+                    role=str(payload.get("role") or "member"),
+                )
+            except ValueError as exc:
+                return self._json_response({"summary": "fail", "error": str(exc)}, start_response, "400 Bad Request")
             return self._json_response({"summary": "ok", "member": created}, start_response)
         return self._json_response({"summary": "fail", "error": f"Unsupported API route: {method} {path}"}, start_response, "404 Not Found")

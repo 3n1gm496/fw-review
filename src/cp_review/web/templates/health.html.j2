@@ -1,5 +1,34 @@
 {% extends "base.html.j2" %}
 {% block content %}
-<div class="hero"><div><h2>Health</h2><p>Doctor checks for Python, filesystem, config, templates and output paths.</p></div></div>
-<section class="panel"><h3>Doctor Report</h3><pre>{{ report | tojson(indent=2) }}</pre></section>
+<div class="hero">
+  <div>
+    <h2>Health</h2>
+    <p>Validate the local shared runtime before blaming the workflow: Python, filesystem, templates, output paths and shared session posture are all summarized here.</p>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><strong>{{ report.summary }}</strong><span>Doctor summary</span></div>
+  <div class="card"><strong>{{ report.checks | length }}</strong><span>Checks executed</span></div>
+  <div class="card"><strong>{{ session_health.active_user_count }}</strong><span>Active shared users</span></div>
+  <div class="card"><strong>{{ session_health.session_ttl_hours }}</strong><span>Session TTL hours</span></div>
+</div>
+
+<section class="panel">
+  <h3>Doctor Checks</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Status</th><th>Check</th><th>Details</th></tr></thead>
+      <tbody>
+        {% for check in report.checks %}
+        <tr>
+          <td><span class="badge {{ check.status }}">{{ check.status }}</span></td>
+          <td>{{ check.name }}</td>
+          <td>{{ check.details }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
 {% endblock %}

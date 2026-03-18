@@ -1,18 +1,59 @@
 {% extends "base.html.j2" %}
 {% block content %}
-<div class="hero"><div><h2>Drift</h2><p>Compare two runs to spot regressions, improvements and new cleanup work.</p></div></div>
+<div class="hero">
+  <div>
+    <h2>Drift</h2>
+    <p>Compare two runs to isolate regressions, confirm resolved cleanup work and spot where the current policy is getting worse instead of better.</p>
+  </div>
+</div>
+
+<section class="panel panel-accent">
+  <h3>Compare Runs</h3>
+  <form class="toolbar" method="get" action="/drift">
+    <select name="previous_run_id">
+      <option value="">Auto previous run</option>
+      {% for run in runs %}<option value="{{ run.run_id }}" {% if previous_run_id == run.run_id %}selected{% endif %}>{{ run.run_id }}</option>{% endfor %}
+    </select>
+    <select name="current_run_id">
+      <option value="">Auto current run</option>
+      {% for run in runs %}<option value="{{ run.run_id }}" {% if current_run_id == run.run_id %}selected{% endif %}>{{ run.run_id }}</option>{% endfor %}
+    </select>
+    <button type="submit">Refresh drift</button>
+  </form>
+</section>
+
+{% if drift %}
 <section class="panel">
-  {% if drift %}
-  <p><strong>Previous:</strong> {{ previous_run_id }} · <strong>Current:</strong> {{ current_run_id }}</p>
+  <div class="summary-strip">
+    <span class="summary-pill"><strong>Previous:</strong> {{ previous_run_id }}</span>
+    <span class="summary-pill"><strong>Current:</strong> {{ current_run_id }}</span>
+  </div>
   <div class="cards">
-    <div class="card"><strong>{{ drift.new_count }}</strong><span>New Findings</span></div>
+    <div class="card"><strong>{{ drift.new_count }}</strong><span>New findings</span></div>
     <div class="card"><strong>{{ drift.resolved_count }}</strong><span>Resolved</span></div>
     <div class="card"><strong>{{ drift.persisting_count }}</strong><span>Persisting</span></div>
-    <div class="card"><strong>{{ drift.current_count }}</strong><span>Current Total</span></div>
+    <div class="card"><strong>{{ drift.current_count }}</strong><span>Current total</span></div>
   </div>
-  <pre>{{ drift | tojson(indent=2) }}</pre>
-  {% else %}
-  <div class="callout">{{ message }}</div>
-  {% endif %}
 </section>
+
+<div class="grid-2">
+  <section class="panel">
+    <h3>Summary</h3>
+    <ul class="kpi-list">
+      <li class="kpi-row"><span>Net delta</span><strong>{{ drift.new_count - drift.resolved_count }}</strong></li>
+      <li class="kpi-row"><span>Regression pressure</span><strong>{{ 'high' if drift.new_count > drift.resolved_count else 'stable' }}</strong></li>
+      <li class="kpi-row"><span>Persisting cleanup debt</span><strong>{{ drift.persisting_count }}</strong></li>
+    </ul>
+  </section>
+  <section class="panel">
+    <h3>Raw Drift Payload</h3>
+    <div class="raw-block">{{ drift | tojson(indent=2) }}</div>
+  </section>
+</div>
+{% else %}
+<section class="panel">
+  <div class="callout warn">{{ message }}</div>
+  <div class="small muted" style="margin-top:10px;">You need at least two findings runs indexed before the cockpit can produce a meaningful drift comparison.</div>
+</section>
+{% endif %}
 {% endblock %}

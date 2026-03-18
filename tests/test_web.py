@@ -320,6 +320,26 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
     assert status == "403 Forbidden"
     assert "Reviewer role required" in forbidden_body
 
+    queue_items = query_queue(web_config.db_path, run_id="run-web-001")
+    status, _, approval_forbidden = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps({"item_ids": [queue_items[0]["item_id"]], "approval_status": "approved"}).encode("utf-8"),
+        cookie=viewer_cookie,
+    )
+    assert status == "403 Forbidden"
+
+    status, _, reviewer_approval_forbidden = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps({"item_ids": [queue_items[0]["item_id"]], "approval_status": "approved"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "403 Forbidden"
+    assert "Approver role required for approval changes" in reviewer_approval_forbidden
+
     status, _, campaign_body = _call_app(
         app_obj,
         method="POST",
@@ -329,6 +349,16 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
     )
     assert status == "200 OK"
     assert json.loads(campaign_body)["campaign"]["campaign_key"] == "spring-cleanup"
+
+    status, _, invalid_member_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/campaign-members",
+        body=json.dumps({"campaign_key": "missing-campaign", "username": "reviewer1", "role": "lead"}).encode("utf-8"),
+        cookie=admin_cookie,
+    )
+    assert status == "400 Bad Request"
+    assert "unknown campaign" in invalid_member_body
 
     status, _, member_body = _call_app(
         app_obj,
@@ -340,7 +370,6 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
     assert status == "200 OK"
     assert json.loads(member_body)["member"]["username"] == "reviewer1"
 
-    queue_items = query_queue(web_config.db_path, run_id="run-web-001")
     status, _, update_body = _call_app(
         app_obj,
         method="POST",
@@ -354,7 +383,7 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
                 "campaign": "spring-cleanup",
             }
         ).encode("utf-8"),
-        cookie=reviewer_cookie,
+        cookie=admin_cookie,
     )
     assert status == "200 OK"
     update_payload = json.loads(update_body)
@@ -398,6 +427,11 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
 
 def test_review_state_and_comments_reject_invalid_payloads(tmp_path: Path):
     config_path, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
     RUNNER.invoke(
         app,
         [
@@ -421,7 +455,7 @@ def test_review_state_and_comments_reject_invalid_payloads(tmp_path: Path):
         method="POST",
         path="/api/review-state",
         body=json.dumps({"item_ids": [queue_item["item_id"]], "approval_status": "maybe"}).encode("utf-8"),
-        cookie=reviewer_cookie,
+        cookie=admin_cookie,
     )
     assert status == "400 Bad Request"
     assert "unsupported approval status" in invalid_state_body
@@ -511,7 +545,7 @@ def test_executive_surface_includes_campaign_team_and_audit_metrics(tmp_path: Pa
                 "campaign": "exec-campaign",
             }
         ).encode("utf-8"),
-        cookie=reviewer_cookie,
+        cookie=admin_cookie,
     )
     _call_app(
         app_obj,
@@ -527,6 +561,30 @@ def test_executive_surface_includes_campaign_team_and_audit_metrics(tmp_path: Pa
     assert "reviewer1" in executive_html
     assert "approved" in executive_html
     assert "comment_added" in executive_html
+
+
+def test_runs_settings_and_health_pages_have_operator_friendly_summaries(tmp_path: Path):
+    _, payload, app_obj, _ = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
+
+    status, _, runs_html = _call_app(app_obj, method="GET", path="/runs", cookie=admin_cookie)
+    assert status == "200 OK"
+    assert "Run Index" in runs_html
+    assert "Latest indexed run" in runs_html
+
+    status, _, settings_html = _call_app(app_obj, method="GET", path="/settings", cookie=admin_cookie)
+    assert status == "200 OK"
+    assert "Shared Web Runtime" in settings_html
+    assert "Provisioned users" in settings_html
+
+    status, _, health_html = _call_app(app_obj, method="GET", path="/health", cookie=admin_cookie)
+    assert status == "200 OK"
+    assert "Doctor Checks" in health_html
+    assert "Session TTL hours" in health_html
 
 
 def test_web_serve_command_invokes_server(monkeypatch, tmp_path: Path):
@@ -580,6 +638,11 @@ def test_web_sync_rebuild_and_drift_fallback(tmp_path: Path):
 
 def test_web_rebuild_preserves_shared_state_and_comments(tmp_path: Path):
     config_path, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
     RUNNER.invoke(
         app,
         [
@@ -612,7 +675,7 @@ def test_web_rebuild_preserves_shared_state_and_comments(tmp_path: Path):
                 "notes": "ready for approval",
             }
         ).encode("utf-8"),
-        cookie=reviewer_cookie,
+        cookie=admin_cookie,
     )
     _call_app(
         app_obj,

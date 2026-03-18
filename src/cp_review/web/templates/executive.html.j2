@@ -1,64 +1,171 @@
 {% extends "base.html.j2" %}
 {% block content %}
-<div class="hero"><div><h2>Executive Surface</h2><p>Health, queue aging, campaign motion and trend visibility for leadership and cleanup sponsors.</p></div></div>
-<div class="cards">
-  <div class="card"><strong>{{ executive.latest_run.run_id if executive.latest_run else 'n/a' }}</strong><span>Latest Run</span></div>
-  <div class="card"><strong>{{ executive.latest_run.policy_health.overall.score if executive.latest_run and executive.latest_run.policy_health and executive.latest_run.policy_health.overall else 'n/a' }}</strong><span>Health Score</span></div>
-  <div class="card"><strong>{{ executive.overdue_count }}</strong><span>Overdue Items</span></div>
-  <div class="card"><strong>{{ executive.queue_action_counts | length }}</strong><span>Action Buckets</span></div>
-  <div class="card"><strong>{{ executive.approval_counts.approved if executive.approval_counts.approved is defined else 0 }}</strong><span>Approved Items</span></div>
-  <div class="card"><strong>{{ executive.campaign_summary | length }}</strong><span>Active Campaigns</span></div>
+<div class="hero">
+  <div>
+    <h2>Executive Surface</h2>
+    <p>Track cleanup progress, approval motion and campaign health without dropping into raw artifacts unless something really needs investigation.</p>
+  </div>
 </div>
+
+<div class="cards">
+  <div class="card"><strong>{{ executive.latest_run.run_id if executive.latest_run else 'n/a' }}</strong><span>Latest indexed run</span></div>
+  <div class="card"><strong>{{ executive.latest_run.policy_health.overall.score if executive.latest_run and executive.latest_run.policy_health and executive.latest_run.policy_health.overall else 'n/a' }}</strong><span>Health score</span></div>
+  <div class="card"><strong>{{ executive.overdue_count }}</strong><span>Overdue items</span></div>
+  <div class="card"><strong>{{ executive.campaign_summary | length }}</strong><span>Tracked campaigns</span></div>
+  <div class="card"><strong>{{ executive.approval_counts.approved if executive.approval_counts.approved is defined else 0 }}</strong><span>Approved items</span></div>
+  <div class="card"><strong>{{ executive.activity | length }}</strong><span>Recent activity events</span></div>
+</div>
+
 <div class="grid-2">
   <section class="panel">
-    <h3>Queue Action Mix</h3>
-    <pre>{{ executive.queue_action_counts | tojson(indent=2) }}</pre>
+    <h3>Action Mix</h3>
+    {% if executive.queue_action_counts %}
+    <ul class="kpi-list">
+      {% for action, count in executive.queue_action_counts.items() %}
+      <li class="kpi-row"><span><span class="badge {{ action }}">{{ action }}</span></span><strong>{{ count }}</strong></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <strong>No queue action data yet.</strong>
+      <div class="small muted">Import a run with queue artifacts to populate this summary.</div>
+    </div>
+    {% endif %}
   </section>
   <section class="panel">
     <h3>Approval Mix</h3>
-    <pre>{{ executive.approval_counts | tojson(indent=2) }}</pre>
+    {% if executive.approval_counts %}
+    <ul class="kpi-list">
+      {% for approval, count in executive.approval_counts.items() %}
+      <li class="kpi-row"><span><span class="badge {{ approval }}">{{ approval }}</span></span><strong>{{ count }}</strong></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <strong>No approval workflow data yet.</strong>
+      <div class="small muted">Approval activity will surface here once reviewers start moving shared queue items.</div>
+    </div>
+    {% endif %}
   </section>
 </div>
+
 <div class="grid-2">
   <section class="panel">
     <h3>Campaign Health</h3>
-    <table>
-      <thead><tr><th>Campaign</th><th>Owner</th><th>Status</th><th>Open</th><th>Members</th></tr></thead>
-      <tbody>
-        {% for campaign in executive.campaign_summary %}
-        <tr><td>{{ campaign.name }}</td><td>{{ campaign.owner }}</td><td>{{ campaign.status }}</td><td>{{ campaign.open_count }}/{{ campaign.queue_count }}</td><td>{{ campaign.member_count }}</td></tr>
-        {% else %}
-        <tr><td colspan="5">No campaign data yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    {% if executive.campaign_summary %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Campaign</th><th>Owner</th><th>Status</th><th>Open</th><th>Members</th></tr></thead>
+        <tbody>
+          {% for campaign in executive.campaign_summary %}
+          <tr>
+            <td>{{ campaign.name }}</td>
+            <td>{{ campaign.owner }}</td>
+            <td><span class="badge {{ 'ok' if campaign.status == 'active' else 'warn' }}">{{ campaign.status }}</span></td>
+            <td>{{ campaign.open_count }}/{{ campaign.queue_count }}</td>
+            <td>{{ campaign.member_count }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No campaign data yet.</strong>
+      <div class="small muted">Create a campaign to start tracking team-oriented cleanup progress.</div>
+    </div>
+    {% endif %}
   </section>
   <section class="panel">
-    <h3>Team Workload</h3>
-    <table>
-      <thead><tr><th>Owner</th><th>Total</th><th>Open</th><th>Approved</th></tr></thead>
-      <tbody>
-        {% for owner, summary in executive.owner_summary.items() %}
-        <tr><td>{{ owner }}</td><td>{{ summary.total }}</td><td>{{ summary.open }}</td><td>{{ summary.approved }}</td></tr>
-        {% else %}
-        <tr><td colspan="4">No workload data yet.</td></tr>
-        {% endfor %}
-      </tbody>
-    </table>
+    <h3>Owner Workload</h3>
+    {% if executive.owner_summary %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Owner</th><th>Total</th><th>Open</th><th>Approved</th></tr></thead>
+        <tbody>
+          {% for owner, summary in executive.owner_summary.items() %}
+          <tr><td>{{ owner }}</td><td>{{ summary.total }}</td><td>{{ summary.open }}</td><td>{{ summary.approved }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No owner workload yet.</strong>
+      <div class="small muted">Assigning items and campaigns will populate this view.</div>
+    </div>
+    {% endif %}
   </section>
 </div>
+
 <div class="grid-2">
   <section class="panel">
     <h3>Recent Workflow Activity</h3>
-    <pre>{{ executive.activity | tojson(indent=2) }}</pre>
+    {% if executive.activity %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>When</th><th>Type</th><th>User</th><th>Rule</th><th>Notes</th></tr></thead>
+        <tbody>
+          {% for item in executive.activity %}
+          <tr>
+            <td>{{ item.changed_at }}</td>
+            <td><span class="badge {{ 'ok' if item.activity_type in ['approval_update','assignment_update'] else 'warn' }}">{{ item.activity_type }}</span></td>
+            <td>{{ item.changed_by }}</td>
+            <td>{{ item.rule_uid }}</td>
+            <td>{{ item.notes[:90] }}{% if item.notes|length > 90 %}...{% endif %}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No audit activity yet.</strong>
+      <div class="small muted">Commenting, assignment and approval updates will appear here.</div>
+    </div>
+    {% endif %}
   </section>
   <section class="panel">
     <h3>Audit Highlights</h3>
-    <pre>{{ executive.audit_highlights | tojson(indent=2) }}</pre>
+    {% if executive.audit_highlights %}
+    <ul class="kpi-list">
+      {% for event_type, count in executive.audit_highlights.items() %}
+      <li class="kpi-row"><span>{{ event_type }}</span><strong>{{ count }}</strong></li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <strong>No audit highlights yet.</strong>
+      <div class="small muted">The latest run has not accumulated enough workflow activity to summarize.</div>
+    </div>
+    {% endif %}
   </section>
 </div>
+
 <section class="panel">
   <h3>Trend</h3>
-  <pre>{{ executive.trend | tojson(indent=2) }}</pre>
+  {% if executive.trend %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run</th><th>Generated</th><th>Queue</th><th>Findings</th><th>Health</th></tr></thead>
+      <tbody>
+        {% for point in executive.trend %}
+        <tr>
+          <td>{{ point.run_id }}</td>
+          <td>{{ point.generated_at }}</td>
+          <td>{{ point.queue_count }}</td>
+          <td>{{ point.findings_count }}</td>
+          <td>{{ point.health_score or 'n/a' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>No run history yet.</strong>
+    <div class="small muted">Trend data appears after the first indexed runs are available.</div>
+  </div>
+  {% endif %}
 </section>
 {% endblock %}

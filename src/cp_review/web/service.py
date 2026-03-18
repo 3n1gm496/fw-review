@@ -27,6 +27,7 @@ from cp_review.web.db import (
     create_session,
     delete_session,
     ensure_bootstrap_admin,
+    export_shared_state_snapshot,
     export_ticket_drafts,
     get_active_run_job,
     get_review_activity,
@@ -37,12 +38,14 @@ from cp_review.web.db import (
     list_campaign_members,
     list_campaigns,
     list_review_comments,
+    list_review_state_entries,
     list_runs,
     query_queue,
     rebuild_db,
     record_explanation,
     record_simulation,
     require_role,
+    restore_shared_state_snapshot,
     update_queue_state,
     update_run_job,
     upsert_campaign,
@@ -189,11 +192,23 @@ def load_campaign_board(web_config: WebConfig) -> dict[str, Any]:
 
 
 def add_shared_review_comment(web_config: WebConfig, *, item_id: str, comment: str, author: str) -> dict[str, Any]:
+    if not comment.strip():
+        raise ValueError("comment must not be empty")
     return add_review_comment(web_config.db_path, item_id=item_id, comment=comment, author=author)
 
 
 def get_rule_comments(web_config: WebConfig, *, item_id: str | None = None, run_id: str | None = None) -> list[dict[str, Any]]:
     return list_review_comments(web_config.db_path, item_id=item_id, run_id=run_id)
+
+
+def session_health(web_config: WebConfig) -> dict[str, Any]:
+    users = len(export_shared_state_snapshot(web_config.db_path).get("users", []))
+    return {
+        "shared_mode": web_config.shared_mode,
+        "user_count": users,
+        "has_users": users > 0,
+        "session_ttl_hours": web_config.session_ttl_hours,
+    }
 
 
 def sync_runs(settings, web_config: WebConfig, *, run_id: str | None = None) -> dict[str, Any]:
@@ -208,6 +223,7 @@ def sync_runs(settings, web_config: WebConfig, *, run_id: str | None = None) -> 
         manifests = sorted(reports_root.glob("*/run-manifest.json"))
     imported: list[str] = []
     corrupted: list[str] = []
+    preserved_state = 0
     for manifest_path in manifests:
         try:
             manifest = _load_json(manifest_path)
@@ -227,15 +243,39 @@ def sync_runs(settings, web_config: WebConfig, *, run_id: str | None = None) -> 
                 top_remediation=top_remediation,
                 strict_validation=strict_validation,
             )
+            preserved_state += len(
+                [entry for entry in list_review_state_entries(web_config.db_path) if entry["run_id"] == str(manifest.get("run_id", manifest_path.parent.name))]
+            )
             imported.append(str(manifest.get("run_id", manifest_path.parent.name)))
         except Exception:  # noqa: BLE001
             corrupted.append(str(manifest_path))
-    return {"summary": "ok" if not corrupted else "warn", "imported_runs": imported, "corrupted_manifests": corrupted}
+    return {
+        "summary": "ok" if not corrupted else "warn",
+        "imported_runs": imported,
+        "corrupted_manifests": corrupted,
+        "preserved_state_entries": preserved_state,
+        "sync_policy": "SQLite workflow state wins over artifacts when the item already exists.",
+    }
 
 
 def rebuild_run_index(settings, web_config: WebConfig) -> dict[str, Any]:
+    snapshot = export_shared_state_snapshot(web_config.db_path)
+    backup_dir = web_config.app_dir / "rebuild-backups"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    backup_path = backup_dir / f"shared-state-{datetime.now(UTC).strftime('%Y%m%dT%H%M%SZ')}.json"
+    backup_path.write_text(json.dumps(snapshot, indent=2, sort_keys=True), encoding="utf-8")
     rebuild_db(web_config.db_path)
-    return sync_runs(settings, web_config)
+    sync_report = sync_runs(settings, web_config)
+    restored = restore_shared_state_snapshot(web_config.db_path, snapshot)
+    return {
+        **sync_report,
+        "summary": sync_report["summary"],
+        "rebuild_guardrail": {
+            "backup_path": str(backup_path),
+            "message": "Shared workflow state was backed up and restored after rebuild.",
+            "restored": restored,
+        },
+    }
 
 
 def _reports_dir_for_run(settings, run_id: str) -> Path:
@@ -311,6 +351,22 @@ def persist_review_state(
     notes: str | None = None,
     changed_by: str = "system",
 ) -> dict[str, Any]:
+    allowed_statuses = {"new", "accepted", "false_positive", "needs_owner_input", "deferred", "done"}
+    allowed_approval = {"pending", "approved", "rejected"}
+    if status is not None and status not in allowed_statuses:
+        raise ValueError(f"unsupported review status: {status}")
+    if approval_status is not None and approval_status not in allowed_approval:
+        raise ValueError(f"unsupported approval status: {approval_status}")
+    if owner is not None and not owner.strip():
+        raise ValueError("owner must not be blank when provided")
+    if campaign is not None and not campaign.strip():
+        raise ValueError("campaign must not be blank when provided")
+    if notes is not None:
+        notes = notes.strip()
+    if owner is not None:
+        owner = owner.strip()
+    if campaign is not None:
+        campaign = campaign.strip()
     updated = update_queue_state(
         web_config.db_path,
         item_ids=item_ids,
@@ -323,6 +379,8 @@ def persist_review_state(
         notes=notes,
         changed_by=changed_by,
     )
+    if updated == 0:
+        raise ValueError("no matching queue items were found for the requested update")
     runs = {item["run_id"] for item in query_queue(web_config.db_path, limit=5000) if (item_ids and item["item_id"] in item_ids) or (rule_uid and item["rule_uid"] == rule_uid)}
     for current_run_id in runs:
         payload = export_review_state_payload(web_config.db_path, run_id=current_run_id)

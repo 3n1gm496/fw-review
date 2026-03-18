@@ -29,7 +29,7 @@ from cp_review.review_queue import (
 from cp_review.run_manifest import write_run_manifest
 from cp_review.web.app import WebApplication
 from cp_review.web.config import load_web_config
-from cp_review.web.db import get_review_activity, get_run, query_queue
+from cp_review.web.db import get_review_activity, get_run, list_review_comments, query_queue
 
 RUNNER = CliRunner()
 
@@ -244,6 +244,11 @@ def test_shared_login_and_routes_require_auth(tmp_path: Path):
     assert status == "302 Found"
     assert headers["Location"] == "/login"
 
+    status, headers, _ = _call_app(app_obj, method="GET", path="/", cookie="fw_review_session=expired-token")
+    assert status == "302 Found"
+    assert headers["Location"] == "/login?reason=session-expired"
+    assert "Max-Age=0" in headers["Set-Cookie"]
+
     admin_cookie = _login_cookie(
         app_obj,
         username=payload["bootstrap_admin"]["username"],
@@ -388,6 +393,48 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
     status, _, rule_html = _call_app(app_obj, method="GET", path="/rules/rule-1?run_id=run-web-001", cookie=reviewer_cookie)
     assert status == "200 OK"
     assert "Owner confirmed change window" in rule_html
+    assert "Why This Rule Was Flagged" in rule_html
+
+
+def test_review_state_and_comments_reject_invalid_payloads(tmp_path: Path):
+    config_path, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    RUNNER.invoke(
+        app,
+        [
+            "web",
+            "create-user",
+            "--config",
+            str(config_path),
+            "--username",
+            "reviewer1",
+            "--role",
+            "reviewer",
+            "--password",
+            "secret-reviewer",
+        ],
+    )
+    reviewer_cookie = _login_cookie(app_obj, username="reviewer1", password="secret-reviewer")
+    queue_item = query_queue(web_config.db_path, run_id="run-web-001")[0]
+
+    status, _, invalid_state_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps({"item_ids": [queue_item["item_id"]], "approval_status": "maybe"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "400 Bad Request"
+    assert "unsupported approval status" in invalid_state_body
+
+    status, _, invalid_comment_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/comments",
+        body=json.dumps({"item_id": queue_item["item_id"], "comment": "   "}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "400 Bad Request"
+    assert "comment must not be empty" in invalid_comment_body
 
 
 def test_web_app_artifacts_and_ticket_export(tmp_path: Path):
@@ -506,7 +553,8 @@ def test_web_serve_command_invokes_server(monkeypatch, tmp_path: Path):
 def test_web_sync_rebuild_and_drift_fallback(tmp_path: Path):
     config_path = _write_settings(tmp_path)
     _seed_run(tmp_path)
-    RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
+    init_result = RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
+    init_payload = json.loads(init_result.stdout)
 
     result = RUNNER.invoke(app, ["web", "sync", "--config", str(config_path), "--rebuild"])
 
@@ -520,12 +568,74 @@ def test_web_sync_rebuild_and_drift_fallback(tmp_path: Path):
     assert run is not None
 
     app_obj = WebApplication(settings, web_config, web_config_path=tmp_path / "config" / "web.yaml")
-    init_payload = json.loads(RUNNER.invoke(app, ["web", "init", "--config", str(config_path)]).stdout)
     admin_cookie = _login_cookie(
         app_obj,
-        username=init_payload["bootstrap_admin"]["username"] if init_payload.get("bootstrap_admin") else "admin",
-        password=init_payload["bootstrap_admin"]["temporary_password"] if init_payload.get("bootstrap_admin") else json.loads(RUNNER.invoke(app, ["web", "init", "--config", str(config_path)]).stdout)["bootstrap_admin"]["temporary_password"],
+        username=init_payload["bootstrap_admin"]["username"],
+        password=init_payload["bootstrap_admin"]["temporary_password"],
     )
     status, _, drift_html = _call_app(app_obj, method="GET", path="/drift", cookie=admin_cookie)
     assert status == "200 OK"
     assert "Need at least two findings runs" in drift_html
+
+
+def test_web_rebuild_preserves_shared_state_and_comments(tmp_path: Path):
+    config_path, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    RUNNER.invoke(
+        app,
+        [
+            "web",
+            "create-user",
+            "--config",
+            str(config_path),
+            "--username",
+            "reviewer1",
+            "--role",
+            "reviewer",
+            "--password",
+            "secret-reviewer",
+        ],
+    )
+    reviewer_cookie = _login_cookie(app_obj, username="reviewer1", password="secret-reviewer")
+    queue_item = query_queue(web_config.db_path, run_id="run-web-001")[0]
+
+    _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps(
+            {
+                "item_ids": [queue_item["item_id"]],
+                "status": "accepted",
+                "approval_status": "approved",
+                "owner": "reviewer1",
+                "campaign": "spring-cleanup",
+                "notes": "ready for approval",
+            }
+        ).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    _call_app(
+        app_obj,
+        method="POST",
+        path="/api/comments",
+        body=json.dumps({"item_id": queue_item["item_id"], "comment": "preserve this"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+
+    result = RUNNER.invoke(app, ["web", "sync", "--config", str(config_path), "--rebuild"])
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["summary"] == "ok"
+    assert payload["rebuild_guardrail"]["restored"]["queue_states"] >= 1
+    assert payload["rebuild_guardrail"]["restored"]["review_comments"] >= 1
+
+    restored_queue = query_queue(web_config.db_path, run_id="run-web-001")
+    assert restored_queue[0]["review_status"] == "accepted"
+    assert restored_queue[0]["approval_status"] == "approved"
+    assert restored_queue[0]["owner"] == "reviewer1"
+    assert restored_queue[0]["campaign"] == "spring-cleanup"
+
+    comments = list_review_comments(web_config.db_path, run_id="run-web-001")
+    assert any(comment["comment"] == "preserve this" for comment in comments)
+    activity = get_review_activity(web_config.db_path, run_id="run-web-001")
+    assert any(entry["activity_type"] == "comment_added" for entry in activity)

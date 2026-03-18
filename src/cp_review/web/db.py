@@ -243,6 +243,149 @@ def rebuild_db(db_path: Path) -> Path:
     return init_db(db_path)
 
 
+def export_shared_state_snapshot(db_path: Path) -> dict[str, Any]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        users = [dict(row) for row in conn.execute("SELECT username, role, password_hash, created_at, updated_at, disabled FROM users ORDER BY username").fetchall()]
+        campaigns = [dict(row) for row in conn.execute("SELECT campaign_key, name, status, owner, summary, due_date, created_at, updated_at FROM campaigns ORDER BY campaign_key").fetchall()]
+        campaign_members = [dict(row) for row in conn.execute("SELECT campaign_key, username, role FROM campaign_members ORDER BY campaign_key, username").fetchall()]
+        queue_states = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT item_id, run_id, rule_uid, review_status, approval_status, owner, campaign, due_date, notes, updated_at FROM queue_items ORDER BY run_id, item_id"
+            ).fetchall()
+        ]
+        review_comments = [dict(row) for row in conn.execute("SELECT run_id, item_id, rule_uid, comment, author, created_at FROM review_comments ORDER BY created_at").fetchall()]
+        review_activity = [dict(row) for row in conn.execute("SELECT run_id, item_id, rule_uid, activity_type, status, approval_status, owner, campaign, notes, previous_state_json, new_state_json, changed_at, changed_by FROM review_activity ORDER BY changed_at").fetchall()]
+    return {
+        "users": users,
+        "campaigns": campaigns,
+        "campaign_members": campaign_members,
+        "queue_states": queue_states,
+        "review_comments": review_comments,
+        "review_activity": review_activity,
+    }
+
+
+def restore_shared_state_snapshot(db_path: Path, snapshot: dict[str, Any]) -> dict[str, int]:
+    init_db(db_path)
+    restored = {
+        "users": 0,
+        "campaigns": 0,
+        "campaign_members": 0,
+        "queue_states": 0,
+        "review_comments": 0,
+        "review_activity": 0,
+    }
+    with connect(db_path) as conn:
+        for user in snapshot.get("users", []):
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO users(username, role, password_hash, created_at, updated_at, disabled)
+                VALUES(?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(user["username"]),
+                    str(user["role"]),
+                    str(user["password_hash"]),
+                    str(user["created_at"]),
+                    str(user["updated_at"]),
+                    1 if bool(user.get("disabled")) else 0,
+                ),
+            )
+            restored["users"] += 1
+        for campaign in snapshot.get("campaigns", []):
+            conn.execute(
+                """
+                INSERT OR REPLACE INTO campaigns(campaign_key, name, status, owner, summary, due_date, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(campaign["campaign_key"]),
+                    str(campaign["name"]),
+                    str(campaign["status"]),
+                    str(campaign["owner"]),
+                    str(campaign.get("summary") or ""),
+                    str(campaign["due_date"]) if campaign.get("due_date") else None,
+                    str(campaign["created_at"]),
+                    str(campaign["updated_at"]),
+                ),
+            )
+            restored["campaigns"] += 1
+        for member in snapshot.get("campaign_members", []):
+            conn.execute(
+                "INSERT OR REPLACE INTO campaign_members(campaign_key, username, role) VALUES(?, ?, ?)",
+                (str(member["campaign_key"]), str(member["username"]), str(member["role"])),
+            )
+            restored["campaign_members"] += 1
+        for state in snapshot.get("queue_states", []):
+            cursor = conn.execute(
+                """
+                UPDATE queue_items
+                SET review_status = ?, approval_status = ?, owner = ?, campaign = ?, due_date = ?, notes = ?, updated_at = ?
+                WHERE item_id = ? AND run_id = ?
+                """,
+                (
+                    str(state["review_status"]),
+                    str(state.get("approval_status") or "pending"),
+                    str(state.get("owner") or ""),
+                    str(state.get("campaign") or ""),
+                    str(state["due_date"]) if state.get("due_date") else None,
+                    str(state.get("notes") or ""),
+                    str(state.get("updated_at") or _now()),
+                    str(state["item_id"]),
+                    str(state["run_id"]),
+                ),
+            )
+            restored["queue_states"] += int(cursor.rowcount)
+        conn.execute("DELETE FROM review_comments")
+        for comment in snapshot.get("review_comments", []):
+            exists = conn.execute("SELECT 1 FROM queue_items WHERE item_id = ? AND run_id = ?", (str(comment["item_id"]), str(comment["run_id"]))).fetchone()
+            if exists is None:
+                continue
+            conn.execute(
+                "INSERT INTO review_comments(run_id, item_id, rule_uid, comment, author, created_at) VALUES(?, ?, ?, ?, ?, ?)",
+                (
+                    str(comment["run_id"]),
+                    str(comment["item_id"]),
+                    str(comment["rule_uid"]),
+                    str(comment["comment"]),
+                    str(comment["author"]),
+                    str(comment["created_at"]),
+                ),
+            )
+            restored["review_comments"] += 1
+        conn.execute("DELETE FROM review_activity")
+        for activity in snapshot.get("review_activity", []):
+            exists = conn.execute("SELECT 1 FROM queue_items WHERE item_id = ? AND run_id = ?", (str(activity["item_id"]), str(activity["run_id"]))).fetchone()
+            if exists is None:
+                continue
+            conn.execute(
+                """
+                INSERT INTO review_activity(run_id, item_id, rule_uid, activity_type, status, approval_status, owner, campaign, notes, previous_state_json, new_state_json, changed_at, changed_by)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(activity["run_id"]),
+                    str(activity["item_id"]),
+                    str(activity["rule_uid"]),
+                    str(activity.get("activity_type") or "workflow_update"),
+                    str(activity["status"]),
+                    str(activity.get("approval_status") or "pending"),
+                    str(activity.get("owner") or ""),
+                    str(activity.get("campaign") or ""),
+                    str(activity.get("notes") or ""),
+                    str(activity.get("previous_state_json") or "{}"),
+                    str(activity.get("new_state_json") or "{}"),
+                    str(activity["changed_at"]),
+                    str(activity.get("changed_by") or ""),
+                ),
+            )
+            restored["review_activity"] += 1
+        conn.commit()
+    return restored
+
+
 def _load_existing_state(conn: sqlite3.Connection, run_id: str) -> dict[str, dict[str, str]]:
     rows = conn.execute(
         "SELECT item_id, review_status, approval_status, owner, campaign, due_date, notes FROM queue_items WHERE run_id = ?",
@@ -420,6 +563,15 @@ def get_run(db_path: Path, run_id: str) -> dict[str, Any] | None:
         "strict_validation": json.loads(str(row["strict_validation_json"] or "{}")),
         "artifacts": [dict(artifact) for artifact in artifacts],
     }
+
+
+def list_review_state_entries(db_path: Path) -> list[dict[str, Any]]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT item_id, run_id, rule_uid, review_status, approval_status, owner, campaign, due_date, notes, updated_at FROM queue_items ORDER BY updated_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
 
 
 def latest_run_id(db_path: Path) -> str | None:
@@ -742,7 +894,7 @@ def add_review_comment(
     init_db(db_path)
     with connect(db_path) as conn:
         row = conn.execute(
-            "SELECT run_id, rule_uid, notes FROM queue_items WHERE item_id = ?",
+            "SELECT run_id, rule_uid, review_status, approval_status, owner, campaign, due_date, notes FROM queue_items WHERE item_id = ?",
             (item_id,),
         ).fetchone()
         if row is None:
@@ -754,6 +906,15 @@ def add_review_comment(
         )
         previous_notes = str(row["notes"] or "")
         combined_notes = previous_notes + ("\n" if previous_notes else "") + f"[{author}] {comment}"
+        previous_state = {
+            "review_status": str(row["review_status"]),
+            "approval_status": str(row["approval_status"] or "pending"),
+            "owner": str(row["owner"] or ""),
+            "campaign": str(row["campaign"] or ""),
+            "due_date": str(row["due_date"] or ""),
+            "notes": previous_notes,
+        }
+        new_state = {**previous_state, "notes": combined_notes}
         conn.execute(
             "UPDATE queue_items SET notes = ?, updated_at = ? WHERE item_id = ?",
             (combined_notes, created_at, item_id),
@@ -765,8 +926,8 @@ def add_review_comment(
             (
                 "comment_added",
                 combined_notes,
-                json.dumps({"notes": previous_notes}, sort_keys=True),
-                json.dumps({"notes": combined_notes}, sort_keys=True),
+                json.dumps(previous_state, sort_keys=True),
+                json.dumps(new_state, sort_keys=True),
                 created_at,
                 author,
                 item_id,

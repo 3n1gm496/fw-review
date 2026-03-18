@@ -64,9 +64,17 @@ class WebApplication:
         if path == "/logout":
             return self._handle_logout(start_response, session)
         if self.web_config.shared_mode and session is None:
+            had_session_cookie = self.web_config.session_cookie_name in str(environ.get("HTTP_COOKIE", ""))
             if path.startswith("/api/"):
-                return self._json_response({"summary": "fail", "error": "Authentication required"}, start_response, "401 Unauthorized")
-            return self._redirect(start_response, "/login")
+                message = "Session expired or invalid" if had_session_cookie else "Authentication required"
+                return self._json_response(
+                    {"summary": "fail", "error": message},
+                    start_response,
+                    "401 Unauthorized",
+                    headers=[self._clear_session_cookie()] if had_session_cookie else None,
+                )
+            location = "/login?reason=session-expired" if had_session_cookie else "/login"
+            return self._redirect(start_response, location, headers=[self._clear_session_cookie()] if had_session_cookie else None)
         assert session is not None
         if path.startswith("/api/"):
             return self._dispatch_api(method, path, query, environ, start_response, session)
@@ -158,7 +166,9 @@ class WebApplication:
     def _handle_login(self, method: str, environ: dict[str, Any], start_response: StartResponse, session: dict[str, Any] | None):
         if session is not None:
             return self._redirect(start_response, "/")
-        error = ""
+        query = {key: values[0] for key, values in parse_qs(str(environ.get("QUERY_STRING", "")), keep_blank_values=True).items()}
+        reason = query.get("reason", "")
+        error = "Your session expired. Sign in again to continue." if reason == "session-expired" else ""
         if method == "POST":
             payload = self._read_body(environ)
             auth_result = authenticate_shared_user(
@@ -174,6 +184,7 @@ class WebApplication:
             {
                 "app_title": "fw-review shared cockpit",
                 "error": error,
+                "reason": reason,
                 "bootstrap_hint": "Use the bootstrap admin credentials emitted by `cp-review web init` on first setup.",
             },
             start_response,
@@ -345,30 +356,36 @@ class WebApplication:
             item_ids = payload.get("item_ids")
             if isinstance(item_ids, str):
                 item_ids = [item_ids]
-            result = persist_review_state(
-                self.settings,
-                self.web_config,
-                item_ids=item_ids if isinstance(item_ids, list) else None,
-                rule_uid=payload.get("rule_uid") or None,
-                status=payload.get("status") or None,
-                approval_status=payload.get("approval_status") or None,
-                owner=payload.get("owner") or None,
-                campaign=payload.get("campaign") or None,
-                due_date=payload.get("due_date") or None,
-                notes=payload.get("notes") or None,
-                changed_by=str(session.get("username", "system")),
-            )
+            try:
+                result = persist_review_state(
+                    self.settings,
+                    self.web_config,
+                    item_ids=item_ids if isinstance(item_ids, list) else None,
+                    rule_uid=payload.get("rule_uid") or None,
+                    status=payload.get("status") or None,
+                    approval_status=payload.get("approval_status") or None,
+                    owner=payload.get("owner") or None,
+                    campaign=payload.get("campaign") or None,
+                    due_date=payload.get("due_date") or None,
+                    notes=payload.get("notes") or None,
+                    changed_by=str(session.get("username", "system")),
+                )
+            except ValueError as exc:
+                return self._json_response({"summary": "fail", "error": str(exc)}, start_response, "400 Bad Request")
             return self._json_response(result, start_response)
         if path == "/api/comments" and method == "POST":
             if not ensure_role(session, "reviewer"):
                 return self._json_response({"summary": "fail", "error": "Reviewer role required"}, start_response, "403 Forbidden")
             payload = self._read_body(environ)
-            comment = add_shared_review_comment(
-                self.web_config,
-                item_id=str(payload["item_id"]),
-                comment=str(payload["comment"]),
-                author=str(session.get("username", "system")),
-            )
+            try:
+                comment = add_shared_review_comment(
+                    self.web_config,
+                    item_id=str(payload["item_id"]),
+                    comment=str(payload["comment"]),
+                    author=str(session.get("username", "system")),
+                )
+            except ValueError as exc:
+                return self._json_response({"summary": "fail", "error": str(exc)}, start_response, "400 Bad Request")
             return self._json_response({"summary": "ok", "comment": comment}, start_response)
         if path.startswith("/api/rules/") and method == "GET":
             rule_uid = path.split("/", 3)[3]

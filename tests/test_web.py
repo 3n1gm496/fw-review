@@ -31,6 +31,7 @@ from cp_review.web.app import WebApplication
 from cp_review.web.config import load_web_config
 from cp_review.web.db import (
     create_run_job,
+    create_session,
     get_recent_run_jobs,
     get_review_activity,
     get_run,
@@ -245,7 +246,7 @@ def test_web_init_creates_config_db_and_bootstrap_admin(tmp_path: Path):
 
 
 def test_shared_login_and_routes_require_auth(tmp_path: Path):
-    _, payload, app_obj, _ = _bootstrap_app(tmp_path)
+    _, payload, app_obj, web_config = _bootstrap_app(tmp_path)
 
     status, headers, _ = _call_app(app_obj, method="GET", path="/")
     assert status == "302 Found"
@@ -254,6 +255,12 @@ def test_shared_login_and_routes_require_auth(tmp_path: Path):
     status, headers, _ = _call_app(app_obj, method="GET", path="/", cookie="fw_review_session=expired-token")
     assert status == "302 Found"
     assert headers["Location"] == "/login?reason=session-expired"
+    assert "Max-Age=0" in headers["Set-Cookie"]
+
+    expired = create_session(web_config.db_path, username="admin", role="admin", ttl_hours=-1)
+    status, headers, body = _call_app(app_obj, method="POST", path="/api/queue/sync", body=json.dumps({}).encode("utf-8"), cookie=f"fw_review_session={expired['session_id']}")
+    assert status == "401 Unauthorized"
+    assert "Session expired or invalid" in body
     assert "Max-Age=0" in headers["Set-Cookie"]
 
     admin_cookie = _login_cookie(
@@ -806,3 +813,21 @@ def test_run_launch_busy_state_and_run_detail_page(tmp_path: Path):
     assert status == "200 OK"
     assert "Run Summary" in run_detail_html
     assert "Queue Readiness" in run_detail_html
+
+
+def test_missing_artifact_renders_useful_error(tmp_path: Path):
+    _, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
+    run = get_run(web_config.db_path, "run-web-001")
+    assert run is not None
+    findings_path = next(Path(artifact["path"]) for artifact in run["artifacts"] if artifact["name"] == "findings_json")
+    findings_path.unlink()
+
+    status, _, error_html = _call_app(app_obj, method="GET", path="/artifacts/run-web-001/findings_json", cookie=admin_cookie)
+    assert status == "404 Not Found"
+    assert "Artifact missing on disk" in error_html
+    assert "cp-review web sync" in error_html

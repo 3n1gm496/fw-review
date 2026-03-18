@@ -16,6 +16,18 @@
   <div class="card"><strong>{{ executive.activity | length }}</strong><span>Recent activity events</span></div>
 </div>
 
+{% if executive.latest_run %}
+<section class="panel panel-accent">
+  <h3>Executive Readout</h3>
+  <div class="summary-strip">
+    <span class="summary-pill"><strong>Latest run:</strong> {{ executive.latest_run.run_id }}</span>
+    <span class="summary-pill"><strong>Queue size:</strong> {{ executive.latest_run.summary.review_queue_count or 0 }}</span>
+    <span class="summary-pill"><strong>Findings:</strong> {{ executive.latest_run.summary.findings_count or 0 }}</span>
+  </div>
+  <p class="small muted">Use this page to answer three questions quickly: is cleanup debt shrinking, are approvals moving, and which campaigns or owners need escalation.</p>
+</section>
+{% endif %}
+
 <div class="grid-2">
   <section class="panel">
     <h3>Action Mix</h3>

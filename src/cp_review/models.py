@@ -156,6 +156,10 @@ class ReviewQueueItem(BaseModel):
     related_rules: list[str] = Field(default_factory=list)
     suggested_next_step: str
     review_status: str = "new"
+    approval_status: str = "pending"
+    owner: str = ""
+    campaign: str = ""
+    due_date: datetime | None = None
 
 
 class ReviewStateEntry(BaseModel):
@@ -165,5 +169,119 @@ class ReviewStateEntry(BaseModel):
     rule_uid: str
     finding_type: str
     status: str = "new"
+    approval_status: str = "pending"
+    owner: str = ""
+    campaign: str = ""
+    due_date: datetime | None = None
     notes: str = ""
     updated_at: datetime
+
+
+class ReviewActivity(BaseModel):
+    """Audit entry for a workflow change on one remediation item."""
+
+    run_id: str
+    item_id: str
+    rule_uid: str
+    activity_type: str = "workflow_update"
+    status: str
+    approval_status: str = "pending"
+    owner: str = ""
+    campaign: str = ""
+    notes: str = ""
+    changed_by: str = ""
+    previous_state: dict[str, Any] = Field(default_factory=dict)
+    new_state: dict[str, Any] = Field(default_factory=dict)
+    changed_at: datetime
+
+
+class ReviewComment(BaseModel):
+    """Persistent review comment attached to a remediation item."""
+
+    run_id: str
+    item_id: str
+    rule_uid: str
+    comment: str
+    author: str
+    created_at: datetime
+
+
+class TicketDraft(BaseModel):
+    """Portable ticket payload derived from one remediation item."""
+
+    item_id: str
+    run_id: str
+    title: str
+    description: str
+    action_type: str
+    rule_uid: str
+    package_name: str
+    layer_name: str
+    priority: str
+    confidence: int
+    risk_score: int
+    owner: str = ""
+    campaign: str = ""
+    deep_link: str = ""
+
+
+class TicketLink(BaseModel):
+    """State of an externally exported remediation item."""
+
+    item_id: str
+    provider: str
+    external_id: str = ""
+    state: str = "local_only"
+    synced_at: datetime | None = None
+
+
+class UserRole(BaseModel):
+    """Role assigned to one cockpit user."""
+
+    username: str
+    role: str
+
+
+class WebSession(BaseModel):
+    """Authenticated shared-web session."""
+
+    session_id: str
+    username: str
+    role: str
+    created_at: datetime
+    expires_at: datetime
+
+
+class Campaign(BaseModel):
+    """Shared remediation campaign."""
+
+    campaign_key: str
+    name: str
+    status: str = "active"
+    owner: str
+    summary: str = ""
+    due_date: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CampaignMembership(BaseModel):
+    """User membership in a remediation campaign."""
+
+    campaign_key: str
+    username: str
+    role: str = "member"
+
+
+class RunJobStatus(BaseModel):
+    """Shared run-job state for the cockpit backend."""
+
+    job_id: str
+    status: str
+    phase: str
+    run_id: str | None = None
+    message: str = ""
+    summary: dict[str, Any] = Field(default_factory=dict)
+    started_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None

@@ -1,0 +1,224 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Remediation Queue</h2>
+    <p>Triage the backlog, keep review and approval separate, and move only the right items into campaigns or ticket export.</p>
+  </div>
+</div>
+
+<form class="toolbar" method="get" action="/queue">
+  <select name="run_id">
+    {% for run in runs %}<option value="{{ run.run_id }}" {% if filters.run_id == run.run_id %}selected{% endif %}>{{ run.run_id }}</option>{% endfor %}
+  </select>
+  <input name="package" placeholder="Package" value="{{ filters.package or '' }}">
+  <input name="layer" placeholder="Layer" value="{{ filters.layer or '' }}">
+  <select name="action_type">
+    <option value="">Action</option>
+    <option value="REMOVE_CANDIDATE" {% if filters.action_type == 'REMOVE_CANDIDATE' %}selected{% endif %}>Remove</option>
+    <option value="RESTRICT_SCOPE" {% if filters.action_type == 'RESTRICT_SCOPE' %}selected{% endif %}>Restrict</option>
+    <option value="REORDER_CANDIDATE" {% if filters.action_type == 'REORDER_CANDIDATE' %}selected{% endif %}>Reorder</option>
+    <option value="MERGE_CANDIDATE" {% if filters.action_type == 'MERGE_CANDIDATE' %}selected{% endif %}>Merge</option>
+  </select>
+  <select name="priority">
+    <option value="">Priority</option>
+    <option value="critical" {% if filters.priority == 'critical' %}selected{% endif %}>Critical</option>
+    <option value="high" {% if filters.priority == 'high' %}selected{% endif %}>High</option>
+    <option value="medium" {% if filters.priority == 'medium' %}selected{% endif %}>Medium</option>
+    <option value="low" {% if filters.priority == 'low' %}selected{% endif %}>Low</option>
+  </select>
+  <select name="status">
+    <option value="">Review status</option>
+    {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}
+    <option value="{{ option }}" {% if filters.status == option %}selected{% endif %}>{{ option }}</option>
+    {% endfor %}
+  </select>
+  <input name="owner" placeholder="Owner" value="{{ filters.owner or '' }}">
+  <input name="campaign" placeholder="Campaign" value="{{ filters.campaign or '' }}">
+  <select name="sort_by">
+    {% for option in ['priority','risk','confidence','rule_number','package','status','updated_at'] %}
+    <option value="{{ option }}" {% if filters.sort_by == option %}selected{% endif %}>sort: {{ option }}</option>
+    {% endfor %}
+  </select>
+  <select name="sort_dir">
+    <option value="desc" {% if filters.sort_dir == 'desc' %}selected{% endif %}>desc</option>
+    <option value="asc" {% if filters.sort_dir == 'asc' %}selected{% endif %}>asc</option>
+  </select>
+  <button type="submit">Apply filters</button>
+  <a href="/queue{% if filters.run_id %}?run_id={{ filters.run_id }}{% endif %}"><button type="button" class="secondary">Clear</button></a>
+</form>
+
+<div class="summary-strip">
+  <span class="summary-pill"><strong>Visible items:</strong> {{ items | length }}</span>
+  <span class="summary-pill"><strong>Run:</strong> {{ filters.run_id or 'latest indexed run' }}</span>
+  <span class="summary-pill"><strong>Sorted by:</strong> {{ filters.sort_by }} {{ filters.sort_dir }}</span>
+  {% if filters.action_type %}<span class="summary-pill"><strong>Action:</strong> {{ filters.action_type }}</span>{% endif %}
+  {% if filters.priority %}<span class="summary-pill"><strong>Priority:</strong> {{ filters.priority }}</span>{% endif %}
+  {% if filters.campaign %}<span class="summary-pill"><strong>Campaign:</strong> {{ filters.campaign }}</span>{% endif %}
+</div>
+
+<section class="panel panel-accent">
+  <div class="split">
+    <div>
+      <h3>Workflow guidance</h3>
+      <p class="small muted">Use <strong>review status</strong> for analyst progress and <strong>approval status</strong> for go/no-go decisions. Keep owner and campaign explicit so rebuilds and resync stay deterministic.</p>
+    </div>
+    <div class="small muted">
+      {% if current_user.role in ['reviewer','approver','admin'] %}
+      Bulk update and ticket export are enabled for your role.
+      {% if current_user.role not in ['approver','admin'] %}<br>Approval changes still require an approver or admin.{% endif %}
+      {% else %}
+      Viewer role: queue mutation and ticket export stay disabled.
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<section class="panel">
+  <h3>Bulk Update</h3>
+  {% if current_user.role in ['reviewer','approver','admin'] %}
+  <div class="inline-form">
+    <select id="bulk-status">
+      {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+    </select>
+    <select id="bulk-approval" {% if current_user.role not in ['approver','admin'] %}disabled{% endif %}>
+      {% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+    </select>
+    <input id="bulk-owner" placeholder="owner">
+    <input id="bulk-campaign" placeholder="campaign">
+    <input id="bulk-notes" placeholder="notes">
+    <button id="bulk-apply-button" type="button" onclick="applyBulkUpdate()">Apply to selected</button>
+    <button type="button" class="secondary" onclick="exportTickets()">Export ticket drafts</button>
+  </div>
+  <div id="bulk-feedback" class="small muted" style="margin-top:10px;"></div>
+  {% else %}
+  <p class="muted">Viewer role: queue updates and ticket export are disabled.</p>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h3>Triage Table</h3>
+  {% if items %}
+  <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Rule</th>
+          <th>Action</th>
+          <th>Priority</th>
+          <th>Review</th>
+          <th>Approval</th>
+          <th>Owner</th>
+          <th>Campaign</th>
+          <th>Confidence</th>
+          <th>Why flagged</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in items %}
+        <tr>
+          <td><input type="checkbox" class="queue-item" value="{{ item.item_id }}"></td>
+          <td>
+            <a href="/rules/{{ item.rule_uid }}?run_id={{ item.run_id }}">{{ item.package_name }}/{{ item.layer_name }} #{{ item.rule_number }}</a>
+            <div class="small muted">{{ item.rule_uid }}</div>
+          </td>
+          <td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td>
+          <td><span class="badge {{ item.priority }}">{{ item.priority }}</span></td>
+          <td><span class="badge {{ item.review_status }}">{{ item.review_status }}</span></td>
+          <td><span class="badge {{ item.approval_status }}">{{ item.approval_status }}</span></td>
+          <td>{{ item.owner or 'unassigned' }}</td>
+          <td>{{ item.campaign or 'none' }}</td>
+          <td>{{ item.confidence }}</td>
+          <td>{{ item.why_flagged[:140] }}{% if item.why_flagged|length > 140 %}...{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>No queue items matched these filters.</strong>
+    <div class="small muted" style="margin-top:8px;">Try clearing one or more filters, switching run, or syncing the latest run artifacts into the cockpit index.</div>
+  </div>
+  {% endif %}
+</section>
+
+<section class="panel">
+  <h3>Recent Jobs</h3>
+  {% if recent_jobs %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Status</th><th>Phase</th><th>Run</th><th>Updated</th><th>Message</th></tr></thead>
+      <tbody>
+        {% for job in recent_jobs %}
+        <tr>
+          <td><span class="badge {{ 'ok' if job.status == 'completed' else 'warn' if job.status == 'running' else 'fail' }}">{{ job.status }}</span></td>
+          <td>{{ job.phase }}</td>
+          <td>{{ job.run_id or 'pending' }}</td>
+          <td>{{ job.updated_at }}</td>
+          <td>{{ job.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>No recent job activity.</strong>
+    <div class="small muted">Run orchestration history will appear here once a web-launched job starts.</div>
+  </div>
+  {% endif %}
+</section>
+
+<script>
+async function applyBulkUpdate() {
+  const feedback = document.getElementById('bulk-feedback');
+  const button = document.getElementById('bulk-apply-button');
+  const itemIds = Array.from(document.querySelectorAll('.queue-item:checked')).map((item) => item.value);
+  if (!itemIds.length) {
+    window.alert('Select at least one remediation item first.');
+    return;
+  }
+  button.disabled = true;
+  feedback.textContent = 'Applying workflow update...';
+  const payload = {
+    item_ids: itemIds,
+    status: document.getElementById('bulk-status').value,
+    approval_status: document.getElementById('bulk-approval').value,
+    owner: document.getElementById('bulk-owner').value,
+    campaign: document.getElementById('bulk-campaign').value,
+    notes: document.getElementById('bulk-notes').value,
+  };
+  if (document.getElementById('bulk-approval').disabled) {
+    delete payload.approval_status;
+  }
+  const response = await fetch('/api/review-state', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    feedback.textContent = body.error || 'Bulk update failed.';
+    button.disabled = false;
+    return;
+  }
+  feedback.textContent = `Updated ${body.updated} queue item(s) across ${body.runs.length} run(s).`;
+  window.location.reload();
+}
+async function exportTickets() {
+  const response = await fetch('/api/tickets/export', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({run_id: '{{ filters.run_id }}'}),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    window.alert(body.error || 'Ticket draft export failed.');
+    return;
+  }
+  window.alert(`Ticket drafts exported to ${body.output_path}`);
+}
+</script>
+{% endblock %}

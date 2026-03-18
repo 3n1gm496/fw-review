@@ -1,0 +1,67 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Settings</h2>
+    <p>Understand how the cockpit is configured, where it stores shared state and whether the local shared runtime is healthy enough for daily use.</p>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><strong>{{ session_health.user_count }}</strong><span>Provisioned users</span></div>
+  <div class="card"><strong>{{ session_health.active_user_count }}</strong><span>Active users</span></div>
+  <div class="card"><strong>{{ session_health.session_ttl_hours }}</strong><span>Session TTL hours</span></div>
+  <div class="card"><strong>{{ 'enabled' if session_health.shared_mode else 'disabled' }}</strong><span>Shared mode</span></div>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h3>Operator Runtime</h3>
+    <ul class="kpi-list">
+      <li class="kpi-row"><span>Management host</span><strong>{{ settings.management.host }}</strong></li>
+      <li class="kpi-row"><span>Output directory</span><strong>{{ settings.collection.output_dir }}</strong></li>
+      <li class="kpi-row"><span>HTML report enabled</span><strong>{{ settings.reporting.html_report }}</strong></li>
+      <li class="kpi-row"><span>JSON findings enabled</span><strong>{{ settings.reporting.json_findings }}</strong></li>
+      <li class="kpi-row"><span>CSV findings enabled</span><strong>{{ settings.reporting.csv_findings }}</strong></li>
+    </ul>
+  </section>
+  <section class="panel">
+    <h3>Shared Web Runtime</h3>
+    <ul class="kpi-list">
+      <li class="kpi-row"><span>Host</span><strong>{{ web_config.host }}</strong></li>
+      <li class="kpi-row"><span>Port</span><strong>{{ web_config.port }}</strong></li>
+      <li class="kpi-row"><span>App directory</span><strong>{{ web_config.app_dir }}</strong></li>
+      <li class="kpi-row"><span>SQLite database</span><strong>{{ web_config.db_path }}</strong></li>
+      <li class="kpi-row"><span>Auto sync on start</span><strong>{{ web_config.auto_sync_on_start }}</strong></li>
+      <li class="kpi-row"><span>Launch strict validate</span><strong>{{ web_config.launch_strict_validate }}</strong></li>
+    </ul>
+  </section>
+</div>
+
+<section class="panel">
+  <h3>Recent Jobs</h3>
+  {% if recent_jobs %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Status</th><th>Phase</th><th>Run</th><th>Updated</th><th>Message</th></tr></thead>
+      <tbody>
+        {% for job in recent_jobs %}
+        <tr>
+          <td><span class="badge {{ 'ok' if job.status == 'completed' else 'warn' if job.status == 'running' else 'fail' }}">{{ job.status }}</span></td>
+          <td>{{ job.phase }}</td>
+          <td>{{ job.run_id or 'pending' }}</td>
+          <td>{{ job.updated_at }}</td>
+          <td>{{ job.message }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>No recent web jobs.</strong>
+    <div class="small muted">Once a run is launched from the cockpit, status history will appear here.</div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

@@ -48,6 +48,9 @@ QUEUE_FIELDS = [
     "reorder_confidence",
     "merge_confidence",
     "review_status",
+    "owner",
+    "campaign",
+    "due_date",
     "why_flagged",
     "related_rules",
     "suggested_next_step",
@@ -111,19 +114,22 @@ def _why_flagged(finding: FindingRecord) -> str:
             if isinstance(values, list) and values
         ]
         merge_strategy = evidence.get("merge_strategy")
+        conflict_classification = evidence.get("conflict_classification")
         residual_text = f" Residual differences remain on: {', '.join(residual_axes)}." if residual_axes else ""
         merge_text = f" Suggested merge pattern: {merge_strategy}." if merge_strategy else ""
+        conflict_text = f" Conflict type: {conflict_classification}." if conflict_classification else ""
         return str(
             evidence.get("rationale")
             or f"{relation} detected against related rule(s) {', '.join(_related_rule_uids(finding))}."
-        ) + residual_text + merge_text
+        ) + residual_text + merge_text + conflict_text
     if finding.finding_type == "unused_rules":
         return f"Rule has zero hits in the review window (last hit: {evidence.get('hit_last_date')})."
     if finding.finding_type == "broad_allow":
+        advisor_summary = evidence.get("summary")
         return (
             "Accept rule is overly broad "
             f"(axes={evidence.get('broad_axes')}, src={evidence.get('source_count')}, dst={evidence.get('destination_count')}, svc={evidence.get('service_count')})."
-        )
+        ) + (f" {advisor_summary}" if advisor_summary else "")
     if finding.finding_type == "high_risk_broad_usage":
         return f"Broad allow rule has heavy observed use (hit_count={evidence.get('hit_count')})."
     if finding.finding_type == "no_log_rules":
@@ -138,6 +144,12 @@ def _suggested_next_step(action_type: str, finding: FindingRecord) -> str:
             return f"Validate owner intent, confirm rule coverage against rule {covered_by}, disable temporarily if safe, then remove."
         return "Validate owner intent, disable temporarily if safe, monitor hits, then remove."
     if action_type == "RESTRICT_SCOPE":
+        if finding.finding_type == "conflicting_overlap":
+            earlier_action = finding.evidence.get("earlier_action")
+            later_action = finding.evidence.get("later_action")
+            return f"Validate policy intent for the {earlier_action}->{later_action} overlap, then narrow scope or reorder the exception safely."
+        if finding.finding_type == "broad_allow" and finding.evidence.get("primary_restriction_axis"):
+            return f"Restrict {finding.evidence['primary_restriction_axis']} first, then validate traffic and add logging if needed."
         return "Review source, destination, service and logging; narrow the rule without breaking known flows."
     if action_type == "REORDER_CANDIDATE":
         if covered_by:
@@ -179,6 +191,9 @@ def write_review_state(path: Path, items: list[ReviewQueueItem], existing: dict[
                 rule_uid=item.rule_uid,
                 finding_type=item.finding_type,
                 status=preserved.status if preserved else "new",
+                owner=preserved.owner if preserved else item.owner,
+                campaign=preserved.campaign if preserved else item.campaign,
+                due_date=preserved.due_date if preserved else item.due_date,
                 notes=preserved.notes if preserved else "",
                 updated_at=preserved.updated_at if preserved else now,
             )
@@ -225,6 +240,9 @@ def build_review_queue(findings: list[FindingRecord], *, run_id: str, review_sta
                 related_rules=_related_rule_uids(finding),
                 suggested_next_step=_suggested_next_step(action_type, finding),
                 review_status=preserved_state.status if preserved_state else "new",
+                owner=preserved_state.owner if preserved_state else "",
+                campaign=preserved_state.campaign if preserved_state else "",
+                due_date=preserved_state.due_date if preserved_state else None,
             )
         )
     return sorted(
@@ -284,4 +302,48 @@ def write_review_queue_html(path: Path, items: list[ReviewQueueItem]) -> Path:
         summary=review_queue_summary(items),
     )
     path.write_text(html, encoding="utf-8")
+    return path
+
+
+def update_review_state(
+    path: Path,
+    *,
+    item_id: str | None = None,
+    rule_uid: str | None = None,
+    status: str | None = None,
+    owner: str | None = None,
+    campaign: str | None = None,
+    due_date: datetime | None = None,
+    notes: str | None = None,
+) -> Path:
+    """Update review-state metadata for one queue item or all items matching a rule UID."""
+    current = load_review_state(path)
+    if not current:
+        raise ValueError(f"No review-state entries found at {path}")
+    matches = [
+        entry
+        for key, entry in current.items()
+        if (item_id and key == item_id) or (rule_uid and entry.rule_uid == rule_uid)
+    ]
+    if not matches:
+        raise ValueError("No review-state entries matched the requested selector")
+    now = datetime.now(UTC)
+    for entry in matches:
+        if status is not None:
+            entry.status = status
+        if owner is not None:
+            entry.owner = owner
+        if campaign is not None:
+            entry.campaign = campaign
+        if due_date is not None:
+            entry.due_date = due_date
+        if notes is not None:
+            entry.notes = notes
+        entry.updated_at = now
+    payload = {
+        "schema_version": 1,
+        "generated_at": now.isoformat(),
+        "entries": [entry.model_dump(mode="json") for entry in current.values()],
+    }
+    path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     return path

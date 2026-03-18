@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ app_title }}</title>
+    <style>
+      body { margin: 0; font-family: Georgia, "Times New Roman", serif; background: radial-gradient(circle at top, #efe8d9, #d8e2dc); color: #17202a; min-height: 100vh; display: grid; place-items: center; }
+      .panel { width: min(440px, 92vw); background: #fffdf8; border: 1px solid #d8cfbe; border-radius: 22px; padding: 28px; box-shadow: 0 18px 40px rgba(23,49,59,0.12); }
+      h1 { margin: 0 0 10px; }
+      p { color: #607080; }
+      form { display: grid; gap: 12px; margin-top: 18px; }
+      input, button { font: inherit; padding: 11px 13px; border-radius: 12px; border: 1px solid #d8cfbe; }
+      button { background: #005f73; color: white; cursor: pointer; }
+      .error { background: #fde6e7; color: #8f1d21; padding: 10px 12px; border-radius: 12px; }
+      .hint { background: #d6ecef; padding: 12px 14px; border-radius: 12px; }
+      code { background: #f0ece2; padding: 2px 6px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <section class="panel">
+      <h1>Shared Remediation Cockpit</h1>
+      <p>Multi-user access for review workflow, campaigns, queue triage and controlled run orchestration.</p>
+      {% if error %}<div class="error">{{ error }}</div>{% endif %}
+      <div class="hint">{{ bootstrap_hint }}</div>
+      <form method="post" action="/login">
+        <input name="username" placeholder="username" autocomplete="username">
+        <input name="password" type="password" placeholder="password" autocomplete="current-password">
+        <button type="submit">Sign In</button>
+      </form>
+    </section>
+  </body>
+</html>

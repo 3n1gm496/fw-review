@@ -1,0 +1,188 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Rule Detail</h2>
+    <p>Review the rationale first, inspect related rules and queue actions next, and keep raw payloads as supporting evidence instead of the main view.</p>
+  </div>
+  <div class="hero-actions">
+    <a href="/queue?run_id={{ run_id }}"><button type="button" class="secondary">Back to queue</button></a>
+    <a href="/simulate/{{ payload.rule.rule_uid }}?run_id={{ run_id }}"><button type="button">Open simulation</button></a>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><strong>{{ payload.summary.finding_count }}</strong><span>Findings on this rule</span></div>
+  <div class="card"><strong>{{ payload.summary.queue_item_count }}</strong><span>Queue items</span></div>
+  <div class="card"><strong>{{ payload.related_rules | length }}</strong><span>Related rules</span></div>
+</div>
+
+<div class="grid-2">
+  <section class="panel panel-accent">
+    <h3>{{ payload.rule.rule_name or payload.rule.rule_uid }}</h3>
+    <div class="summary-strip">
+      <span class="summary-pill"><strong>Package:</strong> {{ payload.rule.package_name }}</span>
+      <span class="summary-pill"><strong>Layer:</strong> {{ payload.rule.layer_name }}</span>
+      <span class="summary-pill"><strong>Rule #:</strong> {{ payload.rule.rule_number }}</span>
+      <span class="summary-pill"><strong>Action:</strong> {{ payload.rule.action }}</span>
+    </div>
+    <p class="muted">Track {{ payload.rule.track }} · Related rules: {{ payload.related_rules | join(', ') if payload.related_rules else 'none' }}</p>
+  </section>
+  <section class="panel">
+    <h3>Queue Workflow</h3>
+    {% if payload.queue_items %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Action</th><th>Priority</th><th>Review</th><th>Approval</th><th>Next step</th></tr></thead>
+        <tbody>
+          {% for item in payload.queue_items %}
+          <tr>
+            <td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td>
+            <td><span class="badge {{ item.priority }}">{{ item.priority }}</span></td>
+            <td><span class="badge {{ item.review_status }}">{{ item.review_status }}</span></td>
+            <td><span class="badge {{ item.approval_status }}">{{ item.approval_status }}</span></td>
+            <td>{{ item.suggested_next_step }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="inline-form" style="margin-top:14px;">
+      <select id="detail-status">{% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
+      <select id="detail-approval" {% if current_user.role not in ['approver','admin'] %}disabled{% endif %}>{% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
+      <input id="detail-owner" placeholder="owner">
+      <input id="detail-campaign" placeholder="campaign">
+      <button id="detail-update-button" type="button" onclick="updateRuleState()">Update workflow</button>
+    </div>
+    <div id="detail-feedback" class="small muted" style="margin-top:10px;"></div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No queue item is currently attached to this rule.</strong>
+      <div class="small muted">The explainability payload is still available below, but there is nothing to move through the workflow yet.</div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h3>Why This Rule Was Flagged</h3>
+    {% if payload.findings %}
+    <div class="stack">
+      {% for finding in payload.findings %}
+      <div class="panel panel-accent">
+        <div class="split">
+          <div>
+            <strong>{{ finding.finding_type }}</strong>
+            <div class="small muted">Risk {{ finding.risk_score }} · cleanup confidence {{ finding.cleanup_confidence }}</div>
+          </div>
+          <div>
+            <span class="badge {{ finding.severity }}">{{ finding.severity }}</span>
+          </div>
+        </div>
+        <p>{{ finding.review_note or finding.recommended_action }}</p>
+        {% if finding.evidence %}
+        <ul class="kpi-list">
+          {% for key, value in finding.evidence.items() %}
+          <li class="kpi-row"><span>{{ key }}</span><span>{{ value }}</span></li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No finding payload is attached.</strong>
+      <div class="small muted">This usually means the rule was loaded from raw context only, not from a current remediation item.</div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h3>Comments</h3>
+    {% if current_user.role in ['reviewer','approver','admin'] and payload.queue_items %}
+    <div class="inline-form" style="margin-bottom:14px;">
+      <input id="detail-comment" placeholder="Add reviewer note or owner feedback" style="min-width:320px;">
+      <button id="detail-comment-button" type="button" class="secondary" onclick="addComment()">Add comment</button>
+    </div>
+    {% endif %}
+    {% if comments %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Author</th><th>Created</th><th>Comment</th></tr></thead>
+        <tbody>
+          {% for comment in comments %}
+          <tr><td>{{ comment.author }}</td><td>{{ comment.created_at }}</td><td>{{ comment.comment }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No comments yet.</strong>
+      <div class="small muted">Use comments to capture owner input, rollout caveats and approval context.</div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<section class="panel">
+  <h3>Raw Findings Payload</h3>
+  <div class="small muted" style="margin-bottom:10px;">Keep this for deep inspection only. The sections above are the primary reviewer surface.</div>
+  <div class="raw-block">{{ payload.findings | tojson(indent=2) }}</div>
+</section>
+
+<script>
+async function updateRuleState() {
+  const button = document.getElementById('detail-update-button');
+  button.disabled = true;
+  document.getElementById('detail-feedback').textContent = 'Updating workflow...';
+  const payload = {
+    rule_uid: '{{ payload.rule.rule_uid }}',
+    status: document.getElementById('detail-status').value,
+    approval_status: document.getElementById('detail-approval').value,
+    owner: document.getElementById('detail-owner').value,
+    campaign: document.getElementById('detail-campaign').value,
+  };
+  if (document.getElementById('detail-approval').disabled) {
+    delete payload.approval_status;
+  }
+  const response = await fetch('/api/review-state', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    document.getElementById('detail-feedback').textContent = body.error || 'Rule workflow update failed.';
+    button.disabled = false;
+    return;
+  }
+  window.location.reload();
+}
+async function addComment() {
+  const button = document.getElementById('detail-comment-button');
+  const itemId = '{{ payload.queue_items[0].item_id if payload.queue_items else "" }}';
+  const comment = document.getElementById('detail-comment').value;
+  if (!itemId || !comment) {
+    window.alert('Provide a comment first.');
+    return;
+  }
+  button.disabled = true;
+  document.getElementById('detail-feedback').textContent = 'Saving comment...';
+  const response = await fetch('/api/comments', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ item_id: itemId, comment }),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    document.getElementById('detail-feedback').textContent = body.error || 'Comment could not be added.';
+    button.disabled = false;
+    return;
+  }
+  window.location.reload();
+}
+</script>
+{% endblock %}

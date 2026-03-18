@@ -45,8 +45,9 @@ def _clamp(value: int) -> int:
     return max(0, min(100, value))
 
 
-def compute_scores(rule: RuleRecord, finding_type: str, severity: str) -> tuple[int, int]:
+def compute_scores(rule: RuleRecord, finding_type: str, severity: str, evidence: dict | None = None) -> tuple[int, int]:
     """Compute deterministic risk and cleanup scores."""
+    evidence = evidence or {}
     risk = max(SEVERITY_BASE.get(severity, 20), RISK_BASE.get(finding_type, 20))
     cleanup = CLEANUP_BASE.get(finding_type, 20)
     broad_axes = sum([rule.has_any_source, rule.has_any_destination, rule.has_any_service])
@@ -58,10 +59,23 @@ def compute_scores(rule: RuleRecord, finding_type: str, severity: str) -> tuple[
         risk += 12
     if (rule.hit_count or 0) == 0:
         cleanup += 10
+    elif finding_type in {"disabled_rules", "unused_rules", "dead_rule_after_covering_rule"}:
+        cleanup -= 15
     if not rule.enabled:
         cleanup += 10
     if not rule.has_comment:
         cleanup += 5
+    if finding_type == "conflicting_overlap":
+        cleanup -= 10
+        if evidence.get("conflict_classification") in {"deny_then_allow_override", "same_scope_policy_conflict"}:
+            risk += 10
+    if finding_type == "partial_shadow" and len(evidence.get("coverage_axes", [])) >= 4:
+        risk += 5
+        cleanup += 5
+    if finding_type == "merge_candidates" and evidence.get("merge_strategy"):
+        cleanup += 5
+    if broad_axes and finding_type in {"disabled_rules", "unused_rules", "dead_rule_after_covering_rule"}:
+        cleanup -= 10
     return _clamp(risk), _clamp(cleanup)
 
 
@@ -74,7 +88,7 @@ def make_finding(
     review_note: str,
 ) -> FindingRecord:
     """Build a finding with computed scores."""
-    risk_score, cleanup_confidence = compute_scores(rule, finding_type, severity)
+    risk_score, cleanup_confidence = compute_scores(rule, finding_type, severity, evidence)
     return FindingRecord(
         finding_type=finding_type,
         severity=severity,

@@ -50,6 +50,16 @@ def _relation_evidence(rule: RuleRecord, other: RuleRecord, relation_type: str, 
     }
 
 
+def _conflict_classification(earlier: RuleRecord, later: RuleRecord, analysis: AnalysisConfig) -> str:
+    earlier_action = earlier.action.lower()
+    later_action = later.action.lower()
+    if earlier_action == "accept" and later_action in {"drop", "reject"}:
+        return "allow_then_deny_exception" if _is_broad(earlier, analysis) else "same_scope_policy_conflict"
+    if earlier_action in {"drop", "reject"} and later_action == "accept":
+        return "deny_then_allow_override"
+    return "same_scope_policy_conflict"
+
+
 def _is_broad(rule: RuleRecord, analysis: AnalysisConfig) -> bool:
     broad_axes = sum([rule.has_any_source, rule.has_any_destination, rule.has_any_service])
     return (
@@ -256,18 +266,32 @@ def run(rules: list[RuleRecord], analysis: AnalysisConfig) -> list:
                 )
 
             if analysis.enable_shadow_candidates and overlaps and earlier.action.lower() != rule.action.lower():
+                conflict_classification = _conflict_classification(earlier, rule, analysis)
+                conflict_rationale = {
+                    "allow_then_deny_exception": "Broad earlier allow overlaps a later deny-like exception and should be reviewed for intended exception handling.",
+                    "deny_then_allow_override": "Earlier deny-like rule overlaps a later allow override and may indicate risky bypass logic.",
+                    "same_scope_policy_conflict": "Earlier rule overlaps the later rule but applies a different action.",
+                }[conflict_classification]
+                evidence = _relation_evidence(
+                    rule,
+                    earlier,
+                    "conflicting_overlap",
+                    axes,
+                    conflict_rationale,
+                )
+                evidence.update(
+                    {
+                        "earlier_action": earlier.action,
+                        "later_action": rule.action,
+                        "conflict_classification": conflict_classification,
+                    }
+                )
                 findings.append(
                     make_finding(
                         rule,
                         finding_type="conflicting_overlap",
                         severity="high",
-                        evidence=_relation_evidence(
-                            rule,
-                            earlier,
-                            "conflicting_overlap",
-                            axes,
-                            "Earlier rule overlaps the later rule but applies a different action.",
-                        ),
+                        evidence=evidence,
                         recommended_action="RESTRICT_SCOPE_AND_VALIDATE_ORDER",
                         review_note="Conflicting overlap should be reviewed with policy intent to avoid ambiguous outcomes.",
                     )

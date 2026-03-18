@@ -1,0 +1,7 @@
+web:
+  host: "127.0.0.1"
+  port: 8765
+  app_dir: "./output/web"
+  db_path: "./output/web/fw-review-web.db"
+  auto_sync_on_start: true
+  launch_strict_validate: true

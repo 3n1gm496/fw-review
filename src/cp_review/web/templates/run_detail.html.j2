@@ -1,0 +1,107 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Run {{ run.run_id }}</h2>
+    <p>Use this page to validate whether the run is trustworthy before you start triaging the queue or sharing its artifacts.</p>
+  </div>
+  <div class="hero-actions">
+    <a href="/runs"><button type="button" class="secondary">Back to runs</button></a>
+    <a href="/queue?run_id={{ run.run_id }}"><button type="button">Open queue</button></a>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><strong>{{ run.summary.findings_count or 0 }}</strong><span>Findings</span></div>
+  <div class="card"><strong>{{ run.summary.review_queue_count or 0 }}</strong><span>Queue items</span></div>
+  <div class="card"><strong>{{ run.policy_health.overall.score if run.policy_health and run.policy_health.overall else 'n/a' }}</strong><span>Health score</span></div>
+  <div class="card"><strong>{{ run.warnings | length }}</strong><span>Warnings</span></div>
+</div>
+
+<div class="grid-2">
+  <section class="panel panel-accent">
+    <h3>Run Summary</h3>
+    <div class="summary-strip">
+      <span class="summary-pill"><strong>Command:</strong> {{ run.command }}</span>
+      <span class="summary-pill"><strong>Validation:</strong> {{ run.validation_summary }}</span>
+      <span class="summary-pill"><strong>Generated:</strong> {{ run.generated_at }}</span>
+    </div>
+    {% if run.strict_validation %}
+    <div class="small muted" style="margin-top:12px;">Strict validation summary: <strong>{{ run.strict_validation.summary or 'unknown' }}</strong></div>
+    {% endif %}
+    {% if run.warnings %}
+    <div class="callout warn" style="margin-top:14px;">
+      <strong>{{ run.warnings | length }} warning{% if run.warnings|length != 1 %}s{% endif %}</strong>
+      <div class="small">This run is indexed, but some collection or validation stages were degraded.</div>
+    </div>
+    {% else %}
+    <div class="callout" style="margin-top:14px;">
+      <strong>No indexed warnings.</strong>
+      <div class="small">This run completed without persisted degradation signals.</div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h3>Queue Readiness</h3>
+    {% if queue_items %}
+    <ul class="kpi-list">
+      <li class="kpi-row"><span>Top visible queue items</span><strong>{{ queue_items | length }}</strong></li>
+      <li class="kpi-row"><span>Highest priority in preview</span><strong>{{ queue_items[0].priority }}</strong></li>
+      <li class="kpi-row"><span>Top action</span><strong>{{ queue_items[0].action_type }}</strong></li>
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <strong>No queue items indexed for this run.</strong>
+      <div class="small muted">The run may still be useful for artifacts, but there is no current remediation shortlist.</div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h3>Artifacts</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Name</th><th>Open</th><th>Path</th></tr></thead>
+        <tbody>
+          {% for artifact in run.artifacts %}
+          <tr>
+            <td>{{ artifact.name }}</td>
+            <td><a href="/artifacts/{{ run.run_id }}/{{ artifact.name }}">view</a></td>
+            <td>{{ artifact.path }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="panel">
+    <h3>Top Queue Items</h3>
+    {% if queue_items %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Rule</th><th>Action</th><th>Priority</th><th>Review</th></tr></thead>
+        <tbody>
+          {% for item in queue_items %}
+          <tr>
+            <td><a href="/rules/{{ item.rule_uid }}?run_id={{ run.run_id }}">{{ item.package_name }}/{{ item.layer_name }} #{{ item.rule_number }}</a></td>
+            <td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td>
+            <td><span class="badge {{ item.priority }}">{{ item.priority }}</span></td>
+            <td><span class="badge {{ item.review_status }}">{{ item.review_status }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="empty-state">
+      <strong>No queue preview available.</strong>
+      <div class="small muted">Open artifacts if you need the raw run outputs, or refresh queue generation for this run.</div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% endblock %}

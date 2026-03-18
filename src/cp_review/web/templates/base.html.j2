@@ -1,0 +1,322 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ app_title }}</title>
+    <style>
+      :root {
+        --bg: #f4efe2;
+        --panel: #fffdfa;
+        --panel-strong: #fbf6eb;
+        --ink: #15212b;
+        --muted: #5e6f7c;
+        --line: #d9d0c1;
+        --accent: #0d5c63;
+        --accent-strong: #083b43;
+        --accent-soft: #d9ecec;
+        --danger: #9f2f2f;
+        --danger-soft: #fce9e7;
+        --warn: #b56210;
+        --warn-soft: #fff0df;
+        --ok: #2a8c66;
+        --ok-soft: #dff4ec;
+        --shadow: 0 10px 30px rgba(21, 33, 43, 0.08);
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        font-family: Georgia, "Times New Roman", serif;
+        color: var(--ink);
+        background:
+          radial-gradient(circle at top left, rgba(13, 92, 99, 0.08), transparent 28%),
+          linear-gradient(180deg, #efe7d6 0%, #f8f3e8 100%);
+      }
+      a { color: var(--accent); text-decoration: none; }
+      a:hover { text-decoration: underline; }
+      code { background: rgba(13, 92, 99, 0.08); padding: 2px 6px; border-radius: 8px; }
+      .layout { display: grid; grid-template-columns: 292px 1fr; min-height: 100vh; }
+      nav {
+        background: linear-gradient(180deg, #17313b 0%, #10242b 100%);
+        color: #f7f2e6;
+        padding: 28px 18px 22px;
+        position: sticky;
+        top: 0;
+        align-self: start;
+        min-height: 100vh;
+      }
+      nav h1 { margin: 0 0 10px; font-size: 1.38rem; line-height: 1.2; }
+      nav .nav-subtitle { margin: 0 0 22px; color: #c9d7da; font-size: 0.94rem; line-height: 1.5; }
+      .nav-section-title {
+        margin: 18px 0 10px;
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #a7bac0;
+      }
+      nav a {
+        display: block;
+        color: #f7f2e6;
+        padding: 11px 12px;
+        border-radius: 12px;
+        margin-bottom: 6px;
+      }
+      nav a.active, nav a:hover {
+        background: rgba(255,255,255,0.12);
+        text-decoration: none;
+      }
+      nav .meta {
+        margin-top: 22px;
+        font-size: 0.92rem;
+        color: #d9e3e5;
+        display: grid;
+        gap: 10px;
+      }
+      .meta-block {
+        padding: 12px;
+        border-radius: 14px;
+        background: rgba(255,255,255,0.08);
+      }
+      main { padding: 30px; }
+      .hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 18px;
+        align-items: flex-start;
+        margin-bottom: 24px;
+      }
+      .hero h2 { margin: 0 0 8px; font-size: 2rem; line-height: 1.1; }
+      .hero p { margin: 0; color: var(--muted); max-width: 66ch; line-height: 1.55; }
+      .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 18px 0 24px; }
+      .card, .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 18px;
+        padding: 18px;
+        box-shadow: var(--shadow);
+      }
+      .card strong {
+        display: block;
+        font-size: 1.85rem;
+        margin-bottom: 6px;
+        line-height: 1;
+      }
+      .card span { color: var(--muted); }
+      .panel h3, .panel h4 { margin-top: 0; }
+      .grid-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
+      .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
+      .stack { display: grid; gap: 18px; }
+      table { width: 100%; border-collapse: collapse; background: transparent; }
+      th, td {
+        text-align: left;
+        padding: 11px 12px;
+        border-bottom: 1px solid var(--line);
+        vertical-align: top;
+      }
+      th {
+        color: var(--muted);
+        font-size: 0.82rem;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        white-space: nowrap;
+      }
+      tr:last-child td { border-bottom: none; }
+      .table-wrap { overflow-x: auto; }
+      .badge {
+        display: inline-block;
+        padding: 4px 10px;
+        border-radius: 999px;
+        font-size: 0.8rem;
+        font-weight: 700;
+        line-height: 1.2;
+        white-space: nowrap;
+      }
+      .badge.ok, .badge.approved, .badge.done { background: var(--ok-soft); color: #126145; }
+      .badge.warn, .badge.pending, .badge.accepted, .badge.needs_owner_input { background: var(--warn-soft); color: #8f4b09; }
+      .badge.fail, .badge.rejected, .badge.false_positive { background: var(--danger-soft); color: #8e2324; }
+      .badge.deferred { background: #ece8f8; color: #5f4a95; }
+      .badge.critical { background: #f8dedd; color: #8e2324; }
+      .badge.high { background: #fff0df; color: #9a4f02; }
+      .badge.medium { background: #e6f1f9; color: #165d84; }
+      .badge.low { background: #ebf3e7; color: #2f7343; }
+      .badge.REMOVE_CANDIDATE { background: #fceae4; color: #ad4e23; }
+      .badge.RESTRICT_SCOPE { background: #e0eff7; color: #12597d; }
+      .badge.REORDER_CANDIDATE { background: #efe7fb; color: #6640a0; }
+      .badge.MERGE_CANDIDATE { background: #e4f4e6; color: #2d7a37; }
+      .toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+        align-items: center;
+      }
+      .toolbar form { display: contents; }
+      .inline-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+      input, select, button, textarea {
+        font: inherit;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 10px 12px;
+        background: #fffdfa;
+        color: var(--ink);
+      }
+      textarea { min-height: 108px; width: 100%; resize: vertical; }
+      button {
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        border-color: var(--accent);
+      }
+      button:hover { filter: brightness(0.97); }
+      button.secondary {
+        background: #edf2f4;
+        color: var(--accent-strong);
+        border-color: #cfd8dc;
+      }
+      button.warn { background: var(--warn); border-color: var(--warn); }
+      button.danger { background: var(--danger); border-color: var(--danger); }
+      button:disabled { cursor: not-allowed; opacity: 0.58; }
+      .muted { color: var(--muted); }
+      .small { font-size: 0.92rem; }
+      .callout {
+        border-left: 4px solid var(--accent);
+        padding: 12px 16px;
+        background: var(--accent-soft);
+        border-radius: 12px;
+      }
+      .callout.warn { border-left-color: var(--warn); background: var(--warn-soft); }
+      .callout.fail { border-left-color: var(--danger); background: var(--danger-soft); }
+      .panel-accent { background: var(--panel-strong); }
+      .empty-state {
+        padding: 18px;
+        border: 1px dashed var(--line);
+        border-radius: 14px;
+        background: rgba(255,255,255,0.45);
+      }
+      .summary-strip {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-bottom: 16px;
+      }
+      .summary-pill {
+        padding: 8px 12px;
+        border-radius: 999px;
+        background: rgba(13, 92, 99, 0.08);
+        color: var(--accent-strong);
+        font-size: 0.92rem;
+      }
+      .kpi-list {
+        display: grid;
+        gap: 10px;
+        margin: 0;
+        padding: 0;
+        list-style: none;
+      }
+      .kpi-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 10px 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .kpi-row:last-child { border-bottom: none; }
+      .split {
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        align-items: flex-start;
+      }
+      .split > * { flex: 1; }
+      .sticky-panel {
+        position: sticky;
+        top: 18px;
+      }
+      .raw-block {
+        background: #13212b;
+        color: #f5f7fa;
+        padding: 16px;
+        border-radius: 14px;
+        overflow-x: auto;
+        font-size: 0.92rem;
+      }
+      .status-dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 7px;
+        background: var(--ok);
+      }
+      .status-dot.warn { background: var(--warn); }
+      .status-dot.fail { background: var(--danger); }
+      .mobile-only { display: none; }
+      @media (max-width: 1180px) {
+        .layout { grid-template-columns: 250px 1fr; }
+      }
+      @media (max-width: 980px) {
+        .layout { grid-template-columns: 1fr; }
+        nav {
+          position: static;
+          min-height: auto;
+          padding-bottom: 18px;
+        }
+        main { padding: 20px; }
+        .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        .hero { flex-direction: column; }
+        .sticky-panel { position: static; }
+        .mobile-only { display: inline; }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="layout">
+      <nav>
+        <h1>fw-review<br>Remediation Cockpit</h1>
+        <p class="nav-subtitle">Shared policy cleanup workflow for reviewers, approvers and campaign owners.</p>
+
+        <div class="nav-section-title">Operate</div>
+        <a href="/" class="{% if current == 'overview' %}active{% endif %}">Overview</a>
+        <a href="/queue" class="{% if current == 'queue' %}active{% endif %}">Queue</a>
+        <a href="/campaigns" class="{% if current == 'campaigns' %}active{% endif %}">Campaigns</a>
+        <a href="/runs" class="{% if current == 'runs' %}active{% endif %}">Runs</a>
+        <a href="/drift" class="{% if current == 'drift' %}active{% endif %}">Drift</a>
+
+        <div class="nav-section-title">Oversight</div>
+        <a href="/executive" class="{% if current == 'executive' %}active{% endif %}">Executive</a>
+        <a href="/health" class="{% if current == 'health' %}active{% endif %}">Health</a>
+        <a href="/settings" class="{% if current == 'settings' %}active{% endif %}">Settings</a>
+
+        <div class="meta">
+          {% if latest_run %}
+          <div class="meta-block">
+            <div class="small muted">Latest indexed run</div>
+            <div><strong>{{ latest_run.run_id }}</strong></div>
+            <div style="margin-top:8px;">Validation:
+              <span class="badge {{ 'ok' if latest_run.validation_summary == 'ok' else 'warn' if latest_run.validation_summary == 'warn' else 'fail' }}">{{ latest_run.validation_summary }}</span>
+            </div>
+          </div>
+          {% endif %}
+          {% if active_job %}
+          <div class="meta-block">
+            <div class="small muted">Current job</div>
+            <div><strong>{{ active_job.phase }}</strong></div>
+            <div>{{ active_job.message }}</div>
+          </div>
+          {% endif %}
+          {% if current_user %}
+          <div class="meta-block">
+            <div>Signed in: <strong>{{ current_user.username }}</strong></div>
+            <div>Role: <span class="badge ok">{{ current_user.role }}</span></div>
+            <div style="margin-top:10px;"><a href="/logout">Sign out</a></div>
+          </div>
+          {% endif %}
+        </div>
+      </nav>
+      <main>
+        {% block content %}{% endblock %}
+      </main>
+    </div>
+  </body>
+</html>

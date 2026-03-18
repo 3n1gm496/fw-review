@@ -34,7 +34,56 @@
       <span class="pill">{{ key }}: {{ value }}</span>
       {% endfor %}
     </p>
+    {% if policy_health and policy_health.overall %}
+    <p><strong>Policy health:</strong> {{ policy_health.overall.score }}/100 (grade {{ policy_health.overall.grade }})</p>
+    {% endif %}
   </div>
+
+  {% if top_remediation.actions %}
+  <div class="section">
+    <h2>Top remediation actions</h2>
+    <table>
+      <thead><tr><th>Action bucket</th><th>Top rule</th><th>Priority</th><th>Next step</th></tr></thead>
+      <tbody>
+        {% for key, items in top_remediation.actions.items() %}
+        <tr>
+          <td>{{ key }}</td>
+          <td>
+            {% if items %}
+            {{ items[0].package_name }} / {{ items[0].layer_name }} / #{{ items[0].rule_number }} / {{ items[0].rule_uid }}
+            {% else %}
+            none
+            {% endif %}
+          </td>
+          <td>{% if items %}{{ items[0].priority }}{% endif %}</td>
+          <td>{% if items %}{{ items[0].suggested_next_step }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+  {% if policy_health and policy_health.packages %}
+  <div class="section">
+    <h2>Policy health by package</h2>
+    <table>
+      <thead><tr><th>Package</th><th>Score</th><th>Grade</th><th>Rules</th><th>Findings</th><th>Queue</th></tr></thead>
+      <tbody>
+      {% for package_name, item in policy_health.packages.items() %}
+        <tr>
+          <td>{{ package_name }}</td>
+          <td>{{ item.score }}</td>
+          <td>{{ item.grade }}</td>
+          <td>{{ item.rule_count }}</td>
+          <td>{{ item.finding_count }}</td>
+          <td>{{ item.queue_count }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
 
   <div class="section">
     <h2>Counts by finding type</h2>
@@ -180,7 +229,7 @@
   <div class="section">
     <h2>Review Queue</h2>
     <table>
-      <thead><tr><th>Priority</th><th>Action</th><th>Rule</th><th>Finding</th><th>Confidence</th><th>Related Rules</th><th>Next Step</th><th>Status</th></tr></thead>
+      <thead><tr><th>Priority</th><th>Action</th><th>Rule</th><th>Finding</th><th>Confidence</th><th>Related Rules</th><th>Next Step</th><th>Status</th><th>Owner</th><th>Campaign</th></tr></thead>
       <tbody>
       {% for item in review_queue %}
         <tr>
@@ -192,6 +241,8 @@
           <td>{{ item.related_rules | join(", ") }}</td>
           <td>{{ item.suggested_next_step }}</td>
           <td>{{ item.review_status }}</td>
+          <td>{{ item.owner }}</td>
+          <td>{{ item.campaign }}</td>
         </tr>
       {% endfor %}
       </tbody>

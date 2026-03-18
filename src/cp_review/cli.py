@@ -6,6 +6,7 @@ import json
 import logging
 import sys
 from collections import Counter
+from datetime import datetime
 from pathlib import Path
 from time import perf_counter
 from typing import Any
@@ -23,6 +24,7 @@ from cp_review.exceptions import CpReviewError
 from cp_review.logging_conf import configure_logging
 from cp_review.models import FindingRecord
 from cp_review.normalize.dataset import load_dataset, save_dataset
+from cp_review.policy_health import build_policy_health, build_top_remediation_actions, write_json_report
 from cp_review.provenance import write_provenance_file
 from cp_review.reports.compare_html_writer import write_compare_summary_html
 from cp_review.reports.csv_writer import write_findings_csv
@@ -33,6 +35,7 @@ from cp_review.review_queue import (
     build_review_queue,
     load_review_state,
     review_queue_summary,
+    update_review_state,
     write_review_queue_csv,
     write_review_queue_html,
     write_review_queue_json,
@@ -40,9 +43,28 @@ from cp_review.review_queue import (
 )
 from cp_review.run_manifest import write_run_manifest
 from cp_review.run_metrics import build_run_metrics, write_run_metrics
+from cp_review.simulation import simulate_rule_change
 from cp_review.validate_run import validate_run_manifest
+from cp_review.web import serve_web_app
+from cp_review.web.config import load_web_config
+from cp_review.web.service import (
+    create_or_update_campaign,
+    create_or_update_user,
+    export_ticket_queue,
+    init_web_workspace,
+    rebuild_run_index,
+    run_web_doctor,
+)
+from cp_review.web.service import (
+    export_review_state as export_web_review_state,
+)
+from cp_review.web.service import (
+    sync_runs as sync_web_runs,
+)
 
 app = typer.Typer(add_completion=False, no_args_is_help=True)
+web_app = typer.Typer(add_completion=False, no_args_is_help=True, help="Local-first remediation cockpit.")
+app.add_typer(web_app, name="web")
 LOGGER = logging.getLogger(__name__)
 DEFAULT_SETTINGS_TEMPLATE = """management:
   host: "mgmt.example.local"
@@ -236,13 +258,33 @@ def _write_report_bundle(
     settings,
     *,
     review_queue: list | None = None,
+    top_remediation: dict[str, Any] | None = None,
+    policy_health: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
     artifacts: dict[str, Path] = {}
     if settings.reporting.html_report:
         report_html = reports_dir / "report.html"
-        write_html_report(report_html, findings=findings, dataset=dataset, settings=settings, review_queue=review_queue or [])
+        write_html_report(
+            report_html,
+            findings=findings,
+            dataset=dataset,
+            settings=settings,
+            review_queue=review_queue or [],
+            top_remediation=top_remediation or {},
+            policy_health=policy_health or {},
+        )
         artifacts["report_html"] = report_html
     return artifacts
+
+
+def _write_advisory_bundle(dataset, findings: list[FindingRecord], queue_items: list, reports_dir: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Path]]:
+    top_remediation = build_top_remediation_actions(queue_items)
+    policy_health = build_policy_health(dataset, findings, queue_items)
+    artifacts = {
+        "top_remediation_json": write_json_report(reports_dir / "top-remediation.json", top_remediation),
+        "policy_health_json": write_json_report(reports_dir / "policy-health.json", policy_health),
+    }
+    return top_remediation, policy_health, artifacts
 
 
 def _summary_with_queue(
@@ -352,6 +394,16 @@ def _explain_rule(
     }
 
 
+def _select_reports_dir(settings, run_id: str | None = None) -> Path:
+    if run_id:
+        return settings.collection.output_dir / "reports" / run_id
+    return settings.collection.output_dir / "reports" / _latest_run_manifest(settings.collection.output_dir / "reports").parent.name
+
+
+def _web_config_path(config: Path) -> Path:
+    return config.parent / "web.yaml"
+
+
 def _execute_full_run(
     settings,
     *,
@@ -384,19 +436,32 @@ def _execute_full_run(
     findings_artifacts = _write_findings_bundle(findings, run_paths.reports_dir, settings)
     queue_items: list = []
     queue_artifacts: dict[str, Path] = {}
+    top_remediation: dict[str, Any] = {}
+    policy_health: dict[str, Any] = {}
+    advisory_artifacts: dict[str, Path] = {}
     if generate_queue:
         queue_items, queue_artifacts = _write_review_queue_bundle(dataset.run_id, findings, run_paths.reports_dir)
+        top_remediation, policy_health, advisory_artifacts = _write_advisory_bundle(dataset, findings, queue_items, run_paths.reports_dir)
 
     report_started = perf_counter()
     report_artifacts: dict[str, Path] = {}
     if generate_report if generate_report is not None else settings.reporting.html_report:
-        report_artifacts = _write_report_bundle(dataset, findings, run_paths.reports_dir, settings, review_queue=queue_items)
+        report_artifacts = _write_report_bundle(
+            dataset,
+            findings,
+            run_paths.reports_dir,
+            settings,
+            review_queue=queue_items,
+            top_remediation=top_remediation,
+            policy_health=policy_health,
+        )
     phase_timings["report"] = perf_counter() - report_started
 
     all_artifacts = {
         "dataset_json": dataset_path,
         **findings_artifacts,
         **queue_artifacts,
+        **advisory_artifacts,
         **report_artifacts,
     }
     return {
@@ -409,6 +474,8 @@ def _execute_full_run(
         "phase_timings": phase_timings,
         "run_paths": run_paths,
         "artifacts": all_artifacts,
+        "top_remediation": top_remediation,
+        "policy_health": policy_health,
     }
 
 
@@ -438,6 +505,157 @@ def init(
     typer.echo(json.dumps(report, indent=2, sort_keys=True))
     if report["summary"] == "fail":
         raise typer.Exit(code=1)
+
+
+@web_app.command("init")
+def web_init(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+    force: bool = typer.Option(False, "--force", help="Overwrite existing web config if present."),
+) -> None:
+    """Initialize the local-first remediation cockpit workspace."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config_path = _web_config_path(config)
+    web_config = load_web_config(settings, config_path=web_config_path)
+    report = init_web_workspace(settings, web_config, web_config_path=web_config_path, force=force)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    if report["summary"] == "fail":
+        raise typer.Exit(code=1)
+
+
+@web_app.command("serve")
+def web_serve(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+    host: str | None = typer.Option(None, "--host", help="Override bind host."),
+    port: int | None = typer.Option(None, "--port", help="Override bind port."),
+) -> None:
+    """Serve the remediation cockpit locally."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config_path = _web_config_path(config)
+    web_config = load_web_config(settings, config_path=web_config_path)
+    if host is not None:
+        web_config.host = host
+    if port is not None:
+        web_config.port = port
+    web_config.app_dir.mkdir(parents=True, exist_ok=True)
+    init_web_workspace(settings, web_config, web_config_path=web_config_path, force=False)
+    serve_web_app(settings, web_config, web_config_path=web_config_path)
+
+
+@web_app.command("doctor")
+def web_doctor_command(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Check remediation cockpit readiness."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config_path = _web_config_path(config)
+    web_config = load_web_config(settings, config_path=web_config_path)
+    report = run_web_doctor(settings, web_config, web_config_path=web_config_path)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+    if report["summary"] == "fail":
+        raise typer.Exit(code=1)
+
+
+@web_app.command("sync")
+def web_sync(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Optional single run to sync."),
+    rebuild: bool = typer.Option(False, "--rebuild", help="Rebuild the local SQLite index before importing runs."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Import run artifacts into the local SQLite web index."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    report = rebuild_run_index(settings, web_config) if rebuild else sync_web_runs(settings, web_config, run_id=run_id)
+    typer.echo(json.dumps(report, indent=2, sort_keys=True))
+
+
+@web_app.command("export-state")
+def web_export_state(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Optional run ID to export state for."),
+    format_name: str = typer.Option("yaml", "--format", help="State export format: yaml or json."),
+    output_path: Path | None = typer.Option(None, "--output-path", dir_okay=False, help="Optional destination path."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Export review workflow state from SQLite to YAML/JSON."""
+    configure_logging()
+    if format_name not in {"yaml", "json"}:
+        raise CpReviewError("Unsupported export format. Use yaml or json.")
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    selected_run_id = run_id or _latest_run_manifest(settings.collection.output_dir / "reports").parent.name
+    if output_path is None:
+        suffix = "json" if format_name == "json" else "yaml"
+        output_path = settings.collection.output_dir / "reports" / selected_run_id / f"review-state.export.{suffix}"
+    path = export_web_review_state(settings, web_config, run_id=selected_run_id, format_name=format_name, output_path=output_path)
+    typer.echo(json.dumps({"summary": "ok", "output_path": str(path), "run_id": selected_run_id}, indent=2, sort_keys=True))
+
+
+@web_app.command("export-tickets")
+def web_export_tickets(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Optional run ID to export ticket drafts for."),
+    base_url: str = typer.Option("http://127.0.0.1:8765", "--base-url", help="Base URL for deep links in exported drafts."),
+    output_path: Path | None = typer.Option(None, "--output-path", dir_okay=False, help="Optional destination JSON path."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Export ticket-ready drafts from the remediation queue."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    selected_run_id = run_id or _latest_run_manifest(settings.collection.output_dir / "reports").parent.name
+    if output_path is None:
+        output_path = settings.collection.output_dir / "reports" / selected_run_id / "ticket-drafts.json"
+    path = export_ticket_queue(web_config, run_id=selected_run_id, base_url=base_url, output_path=output_path)
+    typer.echo(json.dumps({"summary": "ok", "output_path": str(path), "run_id": selected_run_id}, indent=2, sort_keys=True))
+
+
+@web_app.command("create-user")
+def web_create_user(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    username: str = typer.Option(..., "--username", help="Cockpit username."),
+    role: str = typer.Option("viewer", "--role", help="viewer, reviewer, approver, or admin."),
+    password: str = typer.Option(..., "--password", help="Initial password for the user."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Create or update a shared cockpit user."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    created = create_or_update_user(web_config, username=username, role=role, password=password)
+    typer.echo(json.dumps({"summary": "ok", "user": created}, indent=2, sort_keys=True))
+
+
+@web_app.command("create-campaign")
+def web_create_campaign(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    campaign_key: str = typer.Option(..., "--campaign-key", help="Stable campaign key."),
+    name: str = typer.Option(..., "--name", help="Display name."),
+    owner: str = typer.Option(..., "--owner", help="Campaign owner username."),
+    summary: str = typer.Option("", "--summary", help="Short campaign summary."),
+    due_date: str | None = typer.Option(None, "--due-date", help="Optional ISO date or datetime."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Create or update a shared remediation campaign."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    campaign = create_or_update_campaign(
+        web_config,
+        campaign_key=campaign_key,
+        name=name,
+        owner=owner,
+        summary=summary,
+        due_date=due_date,
+    )
+    typer.echo(json.dumps({"summary": "ok", "campaign": campaign}, indent=2, sort_keys=True))
 
 
 @app.command()
@@ -509,7 +727,16 @@ def analyze(
     reports_dir.mkdir(parents=True, exist_ok=True)
     findings_artifacts = _write_findings_bundle(findings, reports_dir, settings)
     queue_items, queue_artifacts = _write_review_queue_bundle(dataset.run_id, findings, reports_dir)
-    report_artifacts = _write_report_bundle(dataset, findings, reports_dir, settings, review_queue=queue_items)
+    top_remediation, policy_health, advisory_artifacts = _write_advisory_bundle(dataset, findings, queue_items, reports_dir)
+    report_artifacts = _write_report_bundle(
+        dataset,
+        findings,
+        reports_dir,
+        settings,
+        review_queue=queue_items,
+        top_remediation=top_remediation,
+        policy_health=policy_health,
+    )
     metrics_path = write_run_metrics(
         reports_dir / "metrics.json",
         build_run_metrics(
@@ -533,11 +760,11 @@ def analyze(
         command="analyze",
         run_id=dataset.run_id,
         settings=settings,
-        artifacts={"dataset_json": dataset_path, "metrics_json": metrics_path, **findings_artifacts, **queue_artifacts, **report_artifacts},
+        artifacts={"dataset_json": dataset_path, "metrics_json": metrics_path, **findings_artifacts, **queue_artifacts, **advisory_artifacts, **report_artifacts},
         dataset=dataset,
         findings=findings,
         queue_items=queue_items,
-        summary=summary,
+        summary={**summary, "policy_health_score": policy_health["overall"]["score"]},
     )
     typer.echo(f"Findings written: {findings_artifacts['findings_json']}")
 
@@ -565,13 +792,16 @@ def queue(
     findings, findings_path = _load_findings_for_report(dataset, findings_path, settings, reports_dir)
     _write_findings_bundle(findings, reports_dir, settings)
     queue_items, artifacts = _write_review_queue_bundle(dataset.run_id, findings, reports_dir)
+    top_remediation, policy_health, advisory_artifacts = _write_advisory_bundle(dataset, findings, queue_items, reports_dir)
     typer.echo(
         json.dumps(
             {
                 "summary": "ok",
                 "run_id": dataset.run_id,
                 "queue_items": len(queue_items),
-                "artifacts": {key: str(path) for key, path in artifacts.items()},
+                "artifacts": {key: str(path) for key, path in {**artifacts, **advisory_artifacts}.items()},
+                "policy_health_score": policy_health["overall"]["score"],
+                "top_remediation_summary": top_remediation["summary"],
             },
             indent=2,
             sort_keys=True,
@@ -601,6 +831,61 @@ def explain(
     typer.echo(json.dumps(_explain_rule(dataset, findings, queue_items, rule_uid=rule_uid), indent=2, sort_keys=True))
 
 
+@app.command("review-state")
+def review_state_command(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Specific run ID to update."),
+    item_id: str | None = typer.Option(None, "--item-id", help="Exact queue item ID to update."),
+    rule_uid: str | None = typer.Option(None, "--rule-uid", help="Rule UID to update across matching queue items."),
+    status: str | None = typer.Option(None, "--status", help="Review status to store."),
+    owner: str | None = typer.Option(None, "--owner", help="Assignee or owner for the remediation item."),
+    campaign: str | None = typer.Option(None, "--campaign", help="Cleanup campaign or workstream name."),
+    due_date: str | None = typer.Option(None, "--due-date", help="Optional ISO date or datetime."),
+    notes: str | None = typer.Option(None, "--notes", help="Additional operator notes."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Update the local review-state workflow for queue items."""
+    configure_logging()
+    if not item_id and not rule_uid:
+        raise CpReviewError("Either --item-id or --rule-uid is required.")
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    reports_dir = _select_reports_dir(settings, run_id)
+    parsed_due_date = datetime.fromisoformat(due_date) if due_date else None
+    updated_path = update_review_state(
+        reports_dir / "review-state.yaml",
+        item_id=item_id,
+        rule_uid=rule_uid,
+        status=status,
+        owner=owner,
+        campaign=campaign,
+        due_date=parsed_due_date,
+        notes=notes,
+    )
+    typer.echo(json.dumps({"summary": "ok", "review_state_path": str(updated_path), "run_id": reports_dir.name}, indent=2, sort_keys=True))
+
+
+@app.command()
+def simulate(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    rule_uid: str = typer.Option(..., "--rule-uid", help="Rule UID to simulate."),
+    run_id: str | None = typer.Option(None, "--run-id", help="Specific run ID to inspect."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Estimate likely impact if one rule is removed or consolidated."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    dataset_path = (
+        settings.collection.output_dir / "normalized" / run_id / "dataset.json"
+        if run_id
+        else _latest_dataset_path(settings.collection.output_dir)
+    )
+    dataset = load_dataset(dataset_path)
+    reports_dir = settings.collection.output_dir / "reports" / dataset.run_id
+    findings, _ = _load_findings_for_report(dataset, None, settings, reports_dir)
+    queue_items, _ = _write_review_queue_bundle(dataset.run_id, findings, reports_dir)
+    typer.echo(json.dumps(simulate_rule_change(dataset, findings, queue_items, rule_uid=rule_uid), indent=2, sort_keys=True))
+
+
 @app.command()
 def report(
     config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
@@ -620,7 +905,16 @@ def report(
     findings, findings_path = _load_findings_for_report(dataset, findings_path, settings, reports_dir)
     findings_artifacts = _write_findings_bundle(findings, reports_dir, settings)
     queue_items, queue_artifacts = _write_review_queue_bundle(dataset.run_id, findings, reports_dir)
-    report_artifacts = _write_report_bundle(dataset, findings, reports_dir, settings, review_queue=queue_items)
+    top_remediation, policy_health, advisory_artifacts = _write_advisory_bundle(dataset, findings, queue_items, reports_dir)
+    report_artifacts = _write_report_bundle(
+        dataset,
+        findings,
+        reports_dir,
+        settings,
+        review_queue=queue_items,
+        top_remediation=top_remediation,
+        policy_health=policy_health,
+    )
     metrics_path = write_run_metrics(
         reports_dir / "metrics.json",
         build_run_metrics(
@@ -650,12 +944,13 @@ def report(
             "metrics_json": metrics_path,
             **findings_artifacts,
             **queue_artifacts,
+            **advisory_artifacts,
             **report_artifacts,
         },
         dataset=dataset,
         findings=findings,
         queue_items=queue_items,
-        summary=summary,
+        summary={**summary, "policy_health_score": policy_health["overall"]["score"]},
     )
     typer.echo(f"Report written: {report_artifacts.get('report_html', reports_dir / 'report.html')}")
 
@@ -704,7 +999,10 @@ def full_run(
         dataset=dataset,
         findings=result["findings"],
         queue_items=result["queue_items"],
-        summary=summary,
+        summary={
+            **summary,
+            **({"policy_health_score": result["policy_health"]["overall"]["score"]} if result["policy_health"] else {}),
+        },
     )
     typer.echo(f"Full run completed: {result['dataset_path']}")
 
@@ -754,7 +1052,10 @@ def run(
         dataset=dataset,
         findings=result["findings"],
         queue_items=result["queue_items"],
-        summary=summary,
+        summary={
+            **summary,
+            **({"policy_health_score": result["policy_health"]["overall"]["score"]} if result["policy_health"] else {}),
+        },
     )
     validate_report = validate_run_manifest(result["run_paths"].reports_dir / "run-manifest.json", strict=strict_validate)
     typer.echo(
@@ -764,6 +1065,7 @@ def run(
                 "run_id": dataset.run_id,
                 "report_html": str(result["run_paths"].reports_dir / "report.html"),
                 "review_queue_html": str(result["run_paths"].reports_dir / "review-queue.html"),
+                "policy_health_score": result["policy_health"]["overall"]["score"] if result["policy_health"] else None,
                 "validation": validate_report,
                 "duration_seconds": round(perf_counter() - total_started + sum(result["phase_timings"].values()), 3),
             },

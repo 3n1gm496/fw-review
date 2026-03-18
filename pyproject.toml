@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cp-review"
-version = "0.2.0"
+version = "0.3.0"
 description = "Read-only Check Point Access Control review CLI"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,9 @@ cp-review = "cp_review.cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.package-data]
+cp_review = ["reports/templates/*.j2", "web/templates/*.j2"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

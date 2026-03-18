@@ -1,0 +1,139 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Operational Overview</h2>
+    <p>Run the shared cleanup workflow from one place, spot what needs attention first, and move straight into queue triage or campaign execution.</p>
+  </div>
+  <div class="hero-actions">
+    <a href="/queue{% if overview %}?run_id={{ overview.run_id }}{% endif %}"><button type="button" class="secondary">Open Queue</button></a>
+    <a href="/campaigns"><button type="button" class="secondary">Open Campaigns</button></a>
+    <form method="post" action="/api/run" onsubmit="event.preventDefault(); launchRun(this);">
+      {% if current_user.role not in ['approver','admin'] %}
+      <button id="launch-run-button" type="submit" disabled title="Approver role required">Launch Run</button>
+      {% else %}
+      <button id="launch-run-button" type="submit">Launch Run</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+{% if overview %}
+<div class="cards">
+  <div class="card"><strong>{{ overview.summary.findings_count or 0 }}</strong><span>Findings in latest run</span></div>
+  <div class="card"><strong>{{ overview.summary.review_queue_count or 0 }}</strong><span>Queue items ready for review</span></div>
+  <div class="card"><strong>{{ overview.policy_health.overall.score if overview.policy_health and overview.policy_health.overall else 'n/a' }}</strong><span>Policy health score</span></div>
+  <div class="card"><strong>{{ executive.overdue_count }}</strong><span>Overdue queue items</span></div>
+  <div class="card"><strong>{{ executive.campaign_summary | length }}</strong><span>Tracked campaigns</span></div>
+  <div class="card"><strong>{{ overview.warnings | length }}</strong><span>Collection or validation warnings</span></div>
+</div>
+
+<div class="grid-2">
+  <section class="panel panel-accent">
+    <h3>Latest Run Status</h3>
+    <div class="summary-strip">
+      <span class="summary-pill"><strong>Run:</strong> {{ overview.run_id }}</span>
+      <span class="summary-pill"><strong>Command:</strong> {{ overview.command }}</span>
+      <span class="summary-pill"><strong>Validation:</strong> {{ overview.validation_summary }}</span>
+    </div>
+    <p class="muted">Generated at {{ overview.generated_at }} and indexed into the shared cockpit.</p>
+    <div class="inline-form">
+      <a href="/runs/{{ overview.run_id }}"><button type="button" class="secondary">Open run detail</button></a>
+      <a href="/queue?run_id={{ overview.run_id }}"><button type="button">Review queue</button></a>
+      <a href="/drift"><button type="button" class="secondary">Inspect drift</button></a>
+    </div>
+    {% if overview.warnings %}
+    <div class="callout warn" style="margin-top:16px;">
+      <strong>{{ overview.warnings | length }} warning{% if overview.warnings|length != 1 %}s{% endif %}</strong>
+      <div class="small">The latest run is usable, but some collection or validation steps were degraded.</div>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <h3>Quick Wins</h3>
+    {% if overview.top_remediation and overview.top_remediation.actions %}
+    <ul class="kpi-list">
+      {% for action, items in overview.top_remediation.actions.items() %}
+      <li class="kpi-row">
+        <span><span class="badge {{ action }}">{{ action }}</span></span>
+        <strong>{{ items | length }} shortlisted</strong>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+      <strong>No shortlist available yet.</strong>
+      <div class="small muted">Run analysis or refresh queue artifacts to generate actionable remediation buckets.</div>
+    </div>
+    {% endif %}
+  </section>
+</div>
+
+<div class="grid-2">
+  <section class="panel">
+    <h3>Attention Areas</h3>
+    <ul class="kpi-list">
+      <li class="kpi-row"><span>Approved items waiting to be closed</span><strong>{{ executive.approval_counts.approved if executive.approval_counts.approved is defined else 0 }}</strong></li>
+      <li class="kpi-row"><span>Pending approval backlog</span><strong>{{ executive.approval_counts.pending if executive.approval_counts.pending is defined else 0 }}</strong></li>
+      <li class="kpi-row"><span>Unassigned workload</span><strong>{{ executive.owner_summary.unassigned.open if executive.owner_summary.unassigned is defined else 0 }}</strong></li>
+    </ul>
+  </section>
+  <section class="panel">
+    <h3>Recent Runs</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Run</th><th>Health</th><th>Queue</th><th>Validation</th></tr></thead>
+        <tbody>
+          {% for run in runs %}
+          <tr>
+            <td><a href="/runs/{{ run.run_id }}">{{ run.run_id }}</a></td>
+            <td>{{ run.policy_health.overall.score if run.policy_health and run.policy_health.overall else 'n/a' }}</td>
+            <td>{{ run.summary.review_queue_count or 0 }}</td>
+            <td><span class="badge {{ 'ok' if run.validation_summary == 'ok' else 'warn' if run.validation_summary == 'warn' else 'fail' }}">{{ run.validation_summary }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>
+{% else %}
+<section class="panel">
+  <h3>No indexed runs yet</h3>
+  <div class="empty-state">
+    <strong>The cockpit is ready, but there is no run to review.</strong>
+    <div class="small muted" style="margin-top:8px;">Use <code>cp-review run</code>, launch a run from this page, or sync an existing output directory into the shared index.</div>
+  </div>
+</section>
+{% endif %}
+<script>
+async function launchRun(form) {
+  const button = document.getElementById('launch-run-button');
+  if (button.disabled) {
+    return;
+  }
+  button.disabled = true;
+  button.textContent = 'Launching...';
+  const response = await fetch('/api/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({strict_validate: true}),
+  });
+  const body = await response.json();
+  if (!response.ok && response.status !== 202 && response.status !== 409) {
+    button.disabled = false;
+    button.textContent = 'Launch Run';
+    window.alert(body.error || 'Run launch failed.');
+    return;
+  }
+  if (response.status === 409) {
+    button.disabled = false;
+    button.textContent = 'Launch Run';
+    window.alert(body.job ? `A run is already active in phase ${body.job.phase}.` : 'A run is already active.');
+    return;
+  }
+  window.location.reload();
+}
+</script>
+{% endblock %}

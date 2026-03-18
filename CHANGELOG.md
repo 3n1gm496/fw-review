@@ -6,8 +6,25 @@ The format is based on Keep a Changelog and this project follows Semantic Versio
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-03-18
+
 ### Added
-- Placeholder for upcoming changes.
+- Local-first remediation cockpit with `cp-review web init`, `serve`, `doctor`, `sync`, and state export flows.
+- Shared multi-user backend with persisted sessions, roles, campaigns, comments, audit trail, and executive surface.
+- Review queue workflow with approval state, owner/campaign tracking, ticket draft export, and policy health summaries.
+- Stronger semantic cleanup engine outputs and workflow UX around run detail, campaigns, drift, settings, and health pages.
+
+### Changed
+- The web cockpit is now the primary operator workflow, with `cp-review run` retained as the non-web fallback path.
+- Queue, rule detail, run detail, campaign board, executive, settings, drift, and health pages now favor operational summaries over raw JSON dumps.
+- Review and approval responsibilities are now separated more clearly in both RBAC and UI behavior.
+
+### Fixed
+- Prevented duplicate audit entries on repeated workflow submits with unchanged state.
+- Deduplicated repeated rule comments caused by fast double submits.
+- Hardened rebuild/sync behavior so shared workflow state is backed up and restored explicitly.
+- Improved expired-session handling for both browser navigation and API requests.
+- Added clearer recovery behavior for missing artifacts and degraded run context.
 
 ## [0.2.0] - 2026-03-16
 

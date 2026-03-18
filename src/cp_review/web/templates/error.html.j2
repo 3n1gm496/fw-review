@@ -1,0 +1,15 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Page Error</h2>
+    <p>{{ message }}</p>
+  </div>
+</div>
+<section class="panel">
+  <div class="empty-state">
+    <strong>The cockpit could not complete this page request.</strong>
+    <div class="small muted" style="margin-top:8px;">If this was triggered by a specific run or artifact, check whether the run is still indexed and whether the artifact still exists on disk. You can also use <code>cp-review web sync</code> to refresh the shared index.</div>
+  </div>
+</section>
+{% endblock %}

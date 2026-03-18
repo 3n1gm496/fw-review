@@ -1,0 +1,39 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Health</h2>
+    <p>Validate the local shared runtime before blaming the workflow: Python, filesystem, templates, output paths and shared session posture are all summarized here.</p>
+  </div>
+</div>
+
+<div class="cards">
+  <div class="card"><strong>{{ report.summary }}</strong><span>Doctor summary</span></div>
+  <div class="card"><strong>{{ report.checks | length }}</strong><span>Checks executed</span></div>
+  <div class="card"><strong>{{ session_health.active_user_count }}</strong><span>Active shared users</span></div>
+  <div class="card"><strong>{{ session_health.session_ttl_hours }}</strong><span>Session TTL hours</span></div>
+</div>
+
+<section class="panel panel-accent">
+  <h3>Health Readout</h3>
+  <p class="small muted">If users report broken pages, sync failures or unexpected logout behavior, start here before changing queue state or re-running analysis. This page summarizes both doctor checks and shared-session posture.</p>
+</section>
+
+<section class="panel">
+  <h3>Doctor Checks</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Status</th><th>Check</th><th>Details</th></tr></thead>
+      <tbody>
+        {% for check in report.checks %}
+        <tr>
+          <td><span class="badge {{ check.status }}">{{ check.status }}</span></td>
+          <td>{{ check.name }}</td>
+          <td>{{ check.details }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endblock %}

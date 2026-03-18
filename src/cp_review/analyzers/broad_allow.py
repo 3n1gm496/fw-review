@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from cp_review.broad_advisor import advise_broad_rule
 from cp_review.config import AnalysisConfig
 from cp_review.models import FindingRecord, RuleRecord
 from cp_review.scoring.priority import make_finding
@@ -37,14 +38,14 @@ def run(rules: list[RuleRecord], analysis: AnalysisConfig) -> list[FindingRecord
             recommendation = "RESTRICT_SERVICE"
         if not rule.has_logging:
             recommendation = f"{recommendation}_AND_ENABLE_LOGGING"
-        findings.append(
-            make_finding(
-                rule,
-                finding_type="broad_allow",
-                severity=severity,
-                evidence={**evidence, "has_logging": rule.has_logging},
-                recommended_action=recommendation,
-                review_note="Broad allow rule should be narrowed on source, destination, or service and logged appropriately.",
-            )
+        finding = make_finding(
+            rule,
+            finding_type="broad_allow",
+            severity=severity,
+            evidence={**evidence, "has_logging": rule.has_logging},
+            recommended_action=recommendation,
+            review_note="Broad allow rule should be narrowed on source, destination, or service and logged appropriately.",
         )
+        finding.evidence.update(advise_broad_rule(rule, finding))
+        findings.append(finding)
     return findings

@@ -1,0 +1,10 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Simulation</h2><p>What-if analysis for one rule in the selected run.</p></div></div>
+<div class="cards">
+  <div class="card"><strong>{{ payload.simulation.safe_remove_confidence or 'n/a' }}</strong><span>Safe Remove Confidence</span></div>
+  <div class="card"><strong>{{ payload.simulation.covering_rules | length }}</strong><span>Covering Rules</span></div>
+  <div class="card"><strong>{{ payload.simulation.overlapping_rules | length }}</strong><span>Overlaps</span></div>
+</div>
+<section class="panel"><h3>Simulation Payload</h3><pre>{{ payload | tojson(indent=2) }}</pre></section>
+{% endblock %}

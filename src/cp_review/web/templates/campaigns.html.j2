@@ -1,0 +1,100 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Campaign Board</h2>
+    <p>Track shared cleanup work by campaign, keep ownership visible and jump straight into the filtered queue when a campaign needs attention.</p>
+  </div>
+</div>
+
+{% if campaigns %}
+<div class="cards">
+  <div class="card"><strong>{{ campaigns | length }}</strong><span>Total campaigns</span></div>
+  <div class="card"><strong>{{ campaigns | selectattr('queue_count') | map(attribute='queue_count') | sum }}</strong><span>Tracked queue items</span></div>
+  <div class="card"><strong>{{ campaigns | selectattr('open_count') | map(attribute='open_count') | sum }}</strong><span>Open campaign items</span></div>
+  <div class="card"><strong>{{ campaigns | map(attribute='members') | map('length') | sum }}</strong><span>Campaign memberships</span></div>
+</div>
+{% endif %}
+
+<section class="panel panel-accent">
+  <h3>Create Campaign</h3>
+  <div class="inline-form">
+    <input id="campaign-key" placeholder="campaign key">
+    <input id="campaign-name" placeholder="display name">
+    <input id="campaign-owner" placeholder="owner" value="{{ current_user.username }}">
+    <input id="campaign-summary" placeholder="summary">
+    <button id="campaign-submit" type="button" onclick="createCampaign()">Save campaign</button>
+  </div>
+  <div class="small muted" style="margin-top:10px;">Double submit protection is enabled in the UI. Use an existing active user as owner.</div>
+  <div id="campaign-feedback" class="small muted" style="margin-top:10px;"></div>
+</section>
+
+<section class="panel">
+  <h3>Campaigns</h3>
+  {% if campaigns %}
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Campaign</th><th>Status</th><th>Owner</th><th>Progress</th><th>Members</th><th>Action</th></tr></thead>
+      <tbody>
+        {% for campaign in campaigns %}
+        <tr>
+          <td>
+            <strong>{{ campaign.name }}</strong>
+            <div class="small muted">{{ campaign.campaign_key }}</div>
+            <div>{{ campaign.summary or 'No campaign summary yet.' }}</div>
+          </td>
+          <td><span class="badge {{ 'ok' if campaign.status == 'active' else 'warn' }}">{{ campaign.status }}</span></td>
+          <td>{{ campaign.owner }}</td>
+          <td>
+            <strong>{{ campaign.open_count }}/{{ campaign.queue_count }}</strong>
+            <div class="small muted">open remediation items</div>
+          </td>
+          <td>
+            {% for member in campaign.members %}
+            <div>{{ member.username }} <span class="muted">({{ member.role }})</span></div>
+            {% else %}
+            <span class="muted">No members yet.</span>
+            {% endfor %}
+          </td>
+          <td><a href="/queue?campaign={{ campaign.campaign_key }}"><button type="button" class="secondary">Open filtered queue</button></a></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <div class="empty-state">
+    <strong>No campaigns created yet.</strong>
+    <div class="small muted">Create the first campaign when the shortlist is ready to be assigned and tracked.</div>
+  </div>
+  {% endif %}
+</section>
+
+<script>
+async function createCampaign() {
+  const button = document.getElementById('campaign-submit');
+  const feedback = document.getElementById('campaign-feedback');
+  button.disabled = true;
+  feedback.textContent = 'Saving campaign...';
+  const payload = {
+    campaign_key: document.getElementById('campaign-key').value,
+    name: document.getElementById('campaign-name').value,
+    owner: document.getElementById('campaign-owner').value,
+    summary: document.getElementById('campaign-summary').value,
+  };
+  const response = await fetch('/api/campaigns', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  const body = await response.json();
+  if (!response.ok) {
+    feedback.textContent = body.error || 'Campaign creation failed.';
+    button.disabled = false;
+    return;
+  }
+  feedback.textContent = 'Campaign saved. Reloading board...';
+  window.location.reload();
+}
+</script>
+{% endblock %}

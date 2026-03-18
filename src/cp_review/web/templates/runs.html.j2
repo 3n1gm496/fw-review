@@ -1,0 +1,47 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero">
+  <div>
+    <h2>Runs</h2>
+    <p>Browse indexed runs, check strict validation quickly and jump into artifacts or queue triage without reading raw manifests first.</p>
+  </div>
+</div>
+
+{% if runs %}
+<div class="cards">
+  <div class="card"><strong>{{ runs | length }}</strong><span>Indexed runs in view</span></div>
+  <div class="card"><strong>{{ runs[0].run_id }}</strong><span>Latest indexed run</span></div>
+  <div class="card"><strong>{{ runs[0].summary.review_queue_count or 0 }}</strong><span>Latest queue size</span></div>
+  <div class="card"><strong>{{ runs[0].policy_health.overall.score if runs[0].policy_health and runs[0].policy_health.overall else 'n/a' }}</strong><span>Latest health score</span></div>
+</div>
+
+<section class="panel">
+  <h3>Run Index</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run</th><th>Command</th><th>Generated</th><th>Validation</th><th>Queue</th><th>Findings</th><th>Health</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+        <tr>
+          <td><a href="/runs/{{ run.run_id }}">{{ run.run_id }}</a></td>
+          <td>{{ run.command }}</td>
+          <td>{{ run.generated_at }}</td>
+          <td><span class="badge {{ 'ok' if run.validation_summary == 'ok' else 'warn' if run.validation_summary == 'warn' else 'fail' }}">{{ run.validation_summary }}</span></td>
+          <td>{{ run.summary.review_queue_count or 0 }}</td>
+          <td>{{ run.summary.findings_count or 0 }}</td>
+          <td>{{ run.policy_health.overall.score if run.policy_health and run.policy_health.overall else 'n/a' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% else %}
+<section class="panel">
+  <div class="empty-state">
+    <strong>No runs are indexed yet.</strong>
+    <div class="small muted">Launch a run from the overview page or sync an existing output directory to populate this page.</div>
+  </div>
+</section>
+{% endif %}
+{% endblock %}

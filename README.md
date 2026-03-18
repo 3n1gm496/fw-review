@@ -47,6 +47,7 @@ The web cockpit is now the standard operator path. It gives you:
 - overview and policy health
 - remediation queue with live review state
 - shared campaign board with owner/member tracking
+- richer audit trail for assignment, comment, and approval changes
 - rule explainability and what-if simulation
 - run launch and sync from the UI
 - drift inspection and health checks
@@ -238,6 +239,19 @@ Each queue item includes:
 - conflict or merge strategy context when applicable
 - recommended next step
 - optional owner, campaign, and due date metadata from the local review workflow
+
+The shared workflow now also tracks:
+
+- `approval_status` independently from review status
+- audit activity types such as `assignment_update`, `approval_update`, and `comment_added`
+- rule-level review comments with author and timestamp
+
+The executive surface now highlights:
+
+- approval mix
+- campaign health and member counts
+- owner/team workload
+- audit event distribution on the latest run
 
 ## Recommended Office Flow
 

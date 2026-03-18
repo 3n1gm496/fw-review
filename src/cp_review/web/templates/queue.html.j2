@@ -50,6 +50,9 @@
     <select id="bulk-status">
       {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
     </select>
+    <select id="bulk-approval">
+      {% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
+    </select>
     <input id="bulk-owner" placeholder="owner">
     <input id="bulk-campaign" placeholder="campaign">
     <input id="bulk-notes" placeholder="notes">
@@ -63,7 +66,7 @@
 
 <section class="panel">
   <table>
-    <thead><tr><th></th><th>Rule</th><th>Action</th><th>Priority</th><th>Status</th><th>Owner</th><th>Campaign</th><th>Confidence</th><th>Why</th></tr></thead>
+    <thead><tr><th></th><th>Rule</th><th>Action</th><th>Priority</th><th>Status</th><th>Approval</th><th>Owner</th><th>Campaign</th><th>Confidence</th><th>Why</th></tr></thead>
     <tbody>
       {% for item in items %}
       <tr>
@@ -72,13 +75,14 @@
         <td><span class="badge {{ item.action_type }}">{{ item.action_type }}</span></td>
         <td>{{ item.priority }}</td>
         <td>{{ item.review_status }}</td>
+        <td>{{ item.approval_status }}</td>
         <td>{{ item.owner }}</td>
         <td>{{ item.campaign }}</td>
         <td>{{ item.confidence }}</td>
         <td>{{ item.why_flagged }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="9">No queue items matched the selected filters.</td></tr>
+      <tr><td colspan="10">No queue items matched the selected filters.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -99,6 +103,7 @@ async function applyBulkUpdate() {
   const payload = {
     item_ids: itemIds,
     status: document.getElementById('bulk-status').value,
+    approval_status: document.getElementById('bulk-approval').value,
     owner: document.getElementById('bulk-owner').value,
     campaign: document.getElementById('bulk-campaign').value,
     notes: document.getElementById('bulk-notes').value,

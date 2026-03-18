@@ -156,6 +156,7 @@ class ReviewQueueItem(BaseModel):
     related_rules: list[str] = Field(default_factory=list)
     suggested_next_step: str
     review_status: str = "new"
+    approval_status: str = "pending"
     owner: str = ""
     campaign: str = ""
     due_date: datetime | None = None
@@ -168,6 +169,7 @@ class ReviewStateEntry(BaseModel):
     rule_uid: str
     finding_type: str
     status: str = "new"
+    approval_status: str = "pending"
     owner: str = ""
     campaign: str = ""
     due_date: datetime | None = None
@@ -181,11 +183,27 @@ class ReviewActivity(BaseModel):
     run_id: str
     item_id: str
     rule_uid: str
+    activity_type: str = "workflow_update"
     status: str
+    approval_status: str = "pending"
     owner: str = ""
     campaign: str = ""
     notes: str = ""
+    changed_by: str = ""
+    previous_state: dict[str, Any] = Field(default_factory=dict)
+    new_state: dict[str, Any] = Field(default_factory=dict)
     changed_at: datetime
+
+
+class ReviewComment(BaseModel):
+    """Persistent review comment attached to a remediation item."""
+
+    run_id: str
+    item_id: str
+    rule_uid: str
+    comment: str
+    author: str
+    created_at: datetime
 
 
 class TicketDraft(BaseModel):

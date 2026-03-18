@@ -21,6 +21,7 @@ from cp_review.validate_run import validate_run_manifest
 from cp_review.web.config import WebConfig, write_web_config
 from cp_review.web.db import (
     add_campaign_member,
+    add_review_comment,
     authenticate_user,
     create_run_job,
     create_session,
@@ -35,6 +36,7 @@ from cp_review.web.db import (
     latest_run_id,
     list_campaign_members,
     list_campaigns,
+    list_review_comments,
     list_runs,
     query_queue,
     rebuild_db,
@@ -186,6 +188,14 @@ def load_campaign_board(web_config: WebConfig) -> dict[str, Any]:
     return {"campaigns": enriched}
 
 
+def add_shared_review_comment(web_config: WebConfig, *, item_id: str, comment: str, author: str) -> dict[str, Any]:
+    return add_review_comment(web_config.db_path, item_id=item_id, comment=comment, author=author)
+
+
+def get_rule_comments(web_config: WebConfig, *, item_id: str | None = None, run_id: str | None = None) -> list[dict[str, Any]]:
+    return list_review_comments(web_config.db_path, item_id=item_id, run_id=run_id)
+
+
 def sync_runs(settings, web_config: WebConfig, *, run_id: str | None = None) -> dict[str, Any]:
     reports_root = settings.collection.output_dir / "reports"
     init_db(web_config.db_path)
@@ -294,6 +304,7 @@ def persist_review_state(
     item_ids: list[str] | None = None,
     rule_uid: str | None = None,
     status: str | None = None,
+    approval_status: str | None = None,
     owner: str | None = None,
     campaign: str | None = None,
     due_date: str | None = None,
@@ -305,6 +316,7 @@ def persist_review_state(
         item_ids=item_ids,
         rule_uid=rule_uid,
         status=status,
+        approval_status=approval_status,
         owner=owner,
         campaign=campaign,
         due_date=due_date,
@@ -351,10 +363,34 @@ def build_executive_summary(web_config: WebConfig) -> dict[str, Any]:
     latest = runs[0] if runs else None
     queue_items = query_queue(web_config.db_path, run_id=latest["run_id"], limit=1000) if latest else []
     overdue = [item for item in queue_items if item.get("due_date") and item.get("review_status") not in {"done", "false_positive"}]
+    approval_counts: dict[str, int] = {}
     action_counts: dict[str, int] = {}
+    owner_summary: dict[str, dict[str, int]] = {}
     for item in queue_items:
         action = str(item["action_type"])
         action_counts[action] = action_counts.get(action, 0) + 1
+        approval = str(item.get("approval_status") or "pending")
+        approval_counts[approval] = approval_counts.get(approval, 0) + 1
+        owner = str(item.get("owner") or "unassigned")
+        bucket = owner_summary.setdefault(owner, {"total": 0, "open": 0, "approved": 0})
+        bucket["total"] += 1
+        if item.get("review_status") not in {"done", "false_positive"}:
+            bucket["open"] += 1
+        if approval == "approved":
+            bucket["approved"] += 1
+    campaigns = load_campaign_board(web_config)["campaigns"]
+    campaign_summary = [
+        {
+            "campaign_key": campaign["campaign_key"],
+            "name": campaign["name"],
+            "owner": campaign["owner"],
+            "status": campaign["status"],
+            "open_count": campaign["open_count"],
+            "queue_count": campaign["queue_count"],
+            "member_count": len(campaign["members"]),
+        }
+        for campaign in campaigns
+    ]
     trend = [
         {
             "run_id": run["run_id"],
@@ -365,11 +401,19 @@ def build_executive_summary(web_config: WebConfig) -> dict[str, Any]:
         }
         for run in runs
     ]
+    audit_highlights: dict[str, int] = {}
+    for activity in get_review_activity(web_config.db_path, run_id=latest["run_id"], limit=200) if latest else []:
+        event = str(activity.get("activity_type", "workflow_update"))
+        audit_highlights[event] = audit_highlights.get(event, 0) + 1
     return {
         "latest_run": latest,
         "queue_action_counts": dict(sorted(action_counts.items())),
+        "approval_counts": dict(sorted(approval_counts.items())),
         "overdue_count": len(overdue),
         "activity": get_review_activity(web_config.db_path, run_id=latest["run_id"], limit=20) if latest else [],
+        "campaign_summary": campaign_summary,
+        "owner_summary": owner_summary,
+        "audit_highlights": dict(sorted(audit_highlights.items())),
         "trend": trend,
     }
 

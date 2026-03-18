@@ -15,6 +15,7 @@ from jinja2 import Environment, FileSystemLoader, select_autoescape
 from cp_review.web.db import get_active_run_job, get_recent_run_jobs, get_run, latest_run_id, list_runs, query_queue
 from cp_review.web.service import (
     add_shared_campaign_member,
+    add_shared_review_comment,
     authenticate_shared_user,
     build_drift,
     build_executive_summary,
@@ -23,6 +24,7 @@ from cp_review.web.service import (
     ensure_role,
     explain_rule,
     export_ticket_queue,
+    get_rule_comments,
     load_campaign_board,
     logout_shared_user,
     persist_review_state,
@@ -271,9 +273,15 @@ class WebApplication:
             rule_uid = path.split("/", 2)[2]
             detail_run_id: str | None = query.get("run_id") or latest_run_id(self.web_config.db_path)
             payload = explain_rule(self.settings, self.web_config, rule_uid=rule_uid, run_id=detail_run_id)
+            comments = get_rule_comments(self.web_config, run_id=detail_run_id)
             return self._render(
                 "rule_detail.html.j2",
-                {**self._base_context(current="queue", session=session), "payload": payload, "run_id": detail_run_id},
+                {
+                    **self._base_context(current="queue", session=session),
+                    "payload": payload,
+                    "run_id": detail_run_id,
+                    "comments": [comment for comment in comments if comment["rule_uid"] == rule_uid],
+                },
                 start_response,
             )
         if path.startswith("/simulate/"):
@@ -343,6 +351,7 @@ class WebApplication:
                 item_ids=item_ids if isinstance(item_ids, list) else None,
                 rule_uid=payload.get("rule_uid") or None,
                 status=payload.get("status") or None,
+                approval_status=payload.get("approval_status") or None,
                 owner=payload.get("owner") or None,
                 campaign=payload.get("campaign") or None,
                 due_date=payload.get("due_date") or None,
@@ -350,6 +359,17 @@ class WebApplication:
                 changed_by=str(session.get("username", "system")),
             )
             return self._json_response(result, start_response)
+        if path == "/api/comments" and method == "POST":
+            if not ensure_role(session, "reviewer"):
+                return self._json_response({"summary": "fail", "error": "Reviewer role required"}, start_response, "403 Forbidden")
+            payload = self._read_body(environ)
+            comment = add_shared_review_comment(
+                self.web_config,
+                item_id=str(payload["item_id"]),
+                comment=str(payload["comment"]),
+                author=str(session.get("username", "system")),
+            )
+            return self._json_response({"summary": "ok", "comment": comment}, start_response)
         if path.startswith("/api/rules/") and method == "GET":
             rule_uid = path.split("/", 3)[3]
             payload = explain_rule(self.settings, self.web_config, rule_uid=rule_uid, run_id=query.get("run_id") or None)

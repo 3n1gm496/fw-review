@@ -17,6 +17,7 @@ from cp_review.models import (
     Campaign,
     CampaignMembership,
     ReviewActivity,
+    ReviewComment,
     ReviewQueueItem,
     ReviewStateEntry,
     RunJobStatus,
@@ -69,6 +70,7 @@ CREATE TABLE IF NOT EXISTS queue_items (
     reorder_confidence INTEGER NOT NULL,
     merge_confidence INTEGER NOT NULL,
     review_status TEXT NOT NULL,
+    approval_status TEXT NOT NULL DEFAULT 'pending',
     owner TEXT NOT NULL,
     campaign TEXT NOT NULL,
     due_date TEXT,
@@ -109,10 +111,14 @@ CREATE TABLE IF NOT EXISTS review_activity (
     run_id TEXT NOT NULL,
     item_id TEXT NOT NULL,
     rule_uid TEXT NOT NULL,
+    activity_type TEXT NOT NULL DEFAULT 'workflow_update',
     status TEXT NOT NULL,
+    approval_status TEXT NOT NULL DEFAULT 'pending',
     owner TEXT NOT NULL,
     campaign TEXT NOT NULL,
     notes TEXT NOT NULL,
+    previous_state_json TEXT NOT NULL DEFAULT '{}',
+    new_state_json TEXT NOT NULL DEFAULT '{}',
     changed_at TEXT NOT NULL,
     changed_by TEXT NOT NULL DEFAULT ''
 );
@@ -147,6 +153,15 @@ CREATE TABLE IF NOT EXISTS campaign_members (
     role TEXT NOT NULL,
     PRIMARY KEY (campaign_key, username)
 );
+CREATE TABLE IF NOT EXISTS review_comments (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    rule_uid TEXT NOT NULL,
+    comment TEXT NOT NULL,
+    author TEXT NOT NULL,
+    created_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_queue_run_id ON queue_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_queue_rule_uid ON queue_items(rule_uid);
 CREATE INDEX IF NOT EXISTS idx_queue_status ON queue_items(review_status);
@@ -156,7 +171,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions(username);
 CREATE INDEX IF NOT EXISTS idx_campaign_owner ON campaigns(owner);
 """
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 ROLE_ORDER = {"viewer": 1, "reviewer": 2, "approver": 3, "admin": 4}
 
@@ -196,6 +211,7 @@ def connect(db_path: Path) -> sqlite3.Connection:
 def init_db(db_path: Path) -> Path:
     with connect(db_path) as conn:
         conn.executescript(SCHEMA)
+        _migrate_schema(conn)
         conn.execute(
             "INSERT INTO schema_meta(key, value) VALUES('schema_version', ?) "
             "ON CONFLICT(key) DO UPDATE SET value = excluded.value",
@@ -203,6 +219,21 @@ def init_db(db_path: Path) -> Path:
         )
         conn.commit()
     return db_path
+
+
+def _ensure_column(conn: sqlite3.Connection, table: str, column: str, ddl: str) -> None:
+    columns = {str(row["name"]) for row in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in columns:
+        conn.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    _ensure_column(conn, "queue_items", "approval_status", "approval_status TEXT NOT NULL DEFAULT 'pending'")
+    _ensure_column(conn, "review_activity", "activity_type", "activity_type TEXT NOT NULL DEFAULT 'workflow_update'")
+    _ensure_column(conn, "review_activity", "approval_status", "approval_status TEXT NOT NULL DEFAULT 'pending'")
+    _ensure_column(conn, "review_activity", "previous_state_json", "previous_state_json TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "review_activity", "new_state_json", "new_state_json TEXT NOT NULL DEFAULT '{}'")
+    _ensure_column(conn, "review_activity", "changed_by", "changed_by TEXT NOT NULL DEFAULT ''")
 
 
 def rebuild_db(db_path: Path) -> Path:
@@ -214,12 +245,13 @@ def rebuild_db(db_path: Path) -> Path:
 
 def _load_existing_state(conn: sqlite3.Connection, run_id: str) -> dict[str, dict[str, str]]:
     rows = conn.execute(
-        "SELECT item_id, review_status, owner, campaign, due_date, notes FROM queue_items WHERE run_id = ?",
+        "SELECT item_id, review_status, approval_status, owner, campaign, due_date, notes FROM queue_items WHERE run_id = ?",
         (run_id,),
     ).fetchall()
     return {
         str(row["item_id"]): {
             "review_status": str(row["review_status"]),
+            "approval_status": str(row["approval_status"] or "pending"),
             "owner": str(row["owner"]),
             "campaign": str(row["campaign"]),
             "due_date": str(row["due_date"] or ""),
@@ -304,9 +336,9 @@ def import_run(
                       item_id, run_id, rule_uid, package_name, layer_name, rule_number,
                       finding_type, action_type, priority, confidence, risk_score,
                       remove_confidence, restrict_confidence, reorder_confidence, merge_confidence,
-                      review_status, owner, campaign, due_date, notes,
+                      review_status, approval_status, owner, campaign, due_date, notes,
                       why_flagged, related_rules_json, suggested_next_step, raw_json, updated_at
-                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         queue_item.item_id,
@@ -325,6 +357,7 @@ def import_run(
                         queue_item.reorder_confidence,
                         queue_item.merge_confidence,
                         preserved.get("review_status", queue_item.review_status),
+                        preserved.get("approval_status", queue_item.approval_status),
                         preserved.get("owner", queue_item.owner),
                         preserved.get("campaign", queue_item.campaign),
                         preserved.get("due_date") or (queue_item.due_date.isoformat() if queue_item.due_date else None),
@@ -471,6 +504,7 @@ def update_queue_state(
     item_ids: list[str] | None = None,
     rule_uid: str | None = None,
     status: str | None = None,
+    approval_status: str | None = None,
     owner: str | None = None,
     campaign: str | None = None,
     due_date: str | None = None,
@@ -495,6 +529,9 @@ def update_queue_state(
     if status is not None:
         fields.append("review_status = ?")
         updates.append(status)
+    if approval_status is not None:
+        fields.append("approval_status = ?")
+        updates.append(approval_status)
     if owner is not None:
         fields.append("owner = ?")
         updates.append(owner)
@@ -511,7 +548,7 @@ def update_queue_state(
     updates.append(_now())
     with connect(db_path) as conn:
         selected_rows = conn.execute(
-            f"SELECT item_id, run_id, rule_uid, review_status, owner, campaign, notes FROM queue_items WHERE {selectors}",
+            f"SELECT item_id, run_id, rule_uid, review_status, approval_status, owner, campaign, due_date, notes FROM queue_items WHERE {selectors}",
             tuple(values),
         ).fetchall()
         cursor = conn.execute(
@@ -520,16 +557,43 @@ def update_queue_state(
         )
         changed_at = _now()
         for row in selected_rows:
+            previous_state = {
+                "review_status": str(row["review_status"]),
+                "approval_status": str(row["approval_status"] or "pending"),
+                "owner": str(row["owner"] or ""),
+                "campaign": str(row["campaign"] or ""),
+                "due_date": str(row["due_date"] or ""),
+                "notes": str(row["notes"] or ""),
+            }
+            new_state = {
+                "review_status": status if status is not None else str(row["review_status"]),
+                "approval_status": approval_status if approval_status is not None else str(row["approval_status"] or "pending"),
+                "owner": owner if owner is not None else str(row["owner"] or ""),
+                "campaign": campaign if campaign is not None else str(row["campaign"] or ""),
+                "due_date": due_date if due_date is not None else str(row["due_date"] or ""),
+                "notes": notes if notes is not None else str(row["notes"] or ""),
+            }
+            activity_type = "workflow_update"
+            if approval_status is not None and approval_status != previous_state["approval_status"]:
+                activity_type = "approval_update"
+            elif owner is not None and owner != previous_state["owner"]:
+                activity_type = "assignment_update"
+            elif notes is not None and notes != previous_state["notes"]:
+                activity_type = "comment_update"
             conn.execute(
-                "INSERT INTO review_activity(run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at, changed_by) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO review_activity(run_id, item_id, rule_uid, activity_type, status, approval_status, owner, campaign, notes, previous_state_json, new_state_json, changed_at, changed_by) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     str(row["run_id"]),
                     str(row["item_id"]),
                     str(row["rule_uid"]),
+                    activity_type,
                     status if status is not None else str(row["review_status"]),
+                    approval_status if approval_status is not None else str(row["approval_status"] or "pending"),
                     owner if owner is not None else str(row["owner"] or ""),
                     campaign if campaign is not None else str(row["campaign"] or ""),
                     notes if notes is not None else str(row["notes"] or ""),
+                    json.dumps(previous_state, sort_keys=True),
+                    json.dumps(new_state, sort_keys=True),
                     changed_at,
                     changed_by,
                 ),
@@ -656,10 +720,87 @@ def get_review_activity(db_path: Path, *, run_id: str | None = None, limit: int 
     values: tuple[Any, ...] = (run_id, limit) if run_id else (limit,)
     with connect(db_path) as conn:
         rows = conn.execute(
-            f"SELECT run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at FROM review_activity {where} ORDER BY changed_at DESC LIMIT ?",
+            f"SELECT run_id, item_id, rule_uid, activity_type, status, approval_status, owner, campaign, notes, changed_by, previous_state_json, new_state_json, changed_at FROM review_activity {where} ORDER BY changed_at DESC LIMIT ?",
             values,
         ).fetchall()
-    return [ReviewActivity.model_validate(dict(row)).model_dump(mode="json") for row in rows]
+    result: list[dict[str, Any]] = []
+    for row in rows:
+        payload = dict(row)
+        payload["previous_state"] = json.loads(str(payload.pop("previous_state_json") or "{}"))
+        payload["new_state"] = json.loads(str(payload.pop("new_state_json") or "{}"))
+        result.append(ReviewActivity.model_validate(payload).model_dump(mode="json"))
+    return result
+
+
+def add_review_comment(
+    db_path: Path,
+    *,
+    item_id: str,
+    comment: str,
+    author: str,
+) -> dict[str, Any]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT run_id, rule_uid, notes FROM queue_items WHERE item_id = ?",
+            (item_id,),
+        ).fetchone()
+        if row is None:
+            raise ValueError(f"Unknown queue item: {item_id}")
+        created_at = _now()
+        conn.execute(
+            "INSERT INTO review_comments(run_id, item_id, rule_uid, comment, author, created_at) VALUES(?, ?, ?, ?, ?, ?)",
+            (str(row["run_id"]), item_id, str(row["rule_uid"]), comment, author, created_at),
+        )
+        previous_notes = str(row["notes"] or "")
+        combined_notes = previous_notes + ("\n" if previous_notes else "") + f"[{author}] {comment}"
+        conn.execute(
+            "UPDATE queue_items SET notes = ?, updated_at = ? WHERE item_id = ?",
+            (combined_notes, created_at, item_id),
+        )
+        conn.execute(
+            "INSERT INTO review_activity(run_id, item_id, rule_uid, activity_type, status, approval_status, owner, campaign, notes, previous_state_json, new_state_json, changed_at, changed_by) "
+            "SELECT run_id, item_id, rule_uid, ?, review_status, approval_status, owner, campaign, ?, ?, ?, ?, ? "
+            "FROM queue_items WHERE item_id = ?",
+            (
+                "comment_added",
+                combined_notes,
+                json.dumps({"notes": previous_notes}, sort_keys=True),
+                json.dumps({"notes": combined_notes}, sort_keys=True),
+                created_at,
+                author,
+                item_id,
+            ),
+        )
+        conn.commit()
+    return ReviewComment(
+        run_id=str(row["run_id"]),
+        item_id=item_id,
+        rule_uid=str(row["rule_uid"]),
+        comment=comment,
+        author=author,
+        created_at=datetime.fromisoformat(created_at),
+    ).model_dump(mode="json")
+
+
+def list_review_comments(db_path: Path, *, run_id: str | None = None, item_id: str | None = None, limit: int = 200) -> list[dict[str, Any]]:
+    init_db(db_path)
+    clauses: list[str] = []
+    values: list[Any] = []
+    if run_id:
+        clauses.append("run_id = ?")
+        values.append(run_id)
+    if item_id:
+        clauses.append("item_id = ?")
+        values.append(item_id)
+    where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+    values.append(limit)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            f"SELECT run_id, item_id, rule_uid, comment, author, created_at FROM review_comments {where} ORDER BY created_at DESC LIMIT ?",
+            tuple(values),
+        ).fetchall()
+    return [ReviewComment.model_validate(dict(row)).model_dump(mode="json") for row in rows]
 
 
 def export_review_state(db_path: Path, *, run_id: str | None = None) -> dict[str, Any]:
@@ -672,6 +813,7 @@ def export_review_state(db_path: Path, *, run_id: str | None = None) -> dict[str
             rule_uid=str(item["rule_uid"]),
             finding_type=str(item["finding_type"]),
             status=str(item["review_status"]),
+            approval_status=str(item.get("approval_status") or "pending"),
             owner=str(item["owner"]),
             campaign=str(item["campaign"]),
             due_date=datetime.fromisoformat(str(item["due_date"])) if item.get("due_date") else None,

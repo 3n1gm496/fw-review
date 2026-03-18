@@ -6,6 +6,8 @@
   <div class="card"><strong>{{ executive.latest_run.policy_health.overall.score if executive.latest_run and executive.latest_run.policy_health and executive.latest_run.policy_health.overall else 'n/a' }}</strong><span>Health Score</span></div>
   <div class="card"><strong>{{ executive.overdue_count }}</strong><span>Overdue Items</span></div>
   <div class="card"><strong>{{ executive.queue_action_counts | length }}</strong><span>Action Buckets</span></div>
+  <div class="card"><strong>{{ executive.approval_counts.approved if executive.approval_counts.approved is defined else 0 }}</strong><span>Approved Items</span></div>
+  <div class="card"><strong>{{ executive.campaign_summary | length }}</strong><span>Active Campaigns</span></div>
 </div>
 <div class="grid-2">
   <section class="panel">
@@ -13,8 +15,46 @@
     <pre>{{ executive.queue_action_counts | tojson(indent=2) }}</pre>
   </section>
   <section class="panel">
+    <h3>Approval Mix</h3>
+    <pre>{{ executive.approval_counts | tojson(indent=2) }}</pre>
+  </section>
+</div>
+<div class="grid-2">
+  <section class="panel">
+    <h3>Campaign Health</h3>
+    <table>
+      <thead><tr><th>Campaign</th><th>Owner</th><th>Status</th><th>Open</th><th>Members</th></tr></thead>
+      <tbody>
+        {% for campaign in executive.campaign_summary %}
+        <tr><td>{{ campaign.name }}</td><td>{{ campaign.owner }}</td><td>{{ campaign.status }}</td><td>{{ campaign.open_count }}/{{ campaign.queue_count }}</td><td>{{ campaign.member_count }}</td></tr>
+        {% else %}
+        <tr><td colspan="5">No campaign data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  <section class="panel">
+    <h3>Team Workload</h3>
+    <table>
+      <thead><tr><th>Owner</th><th>Total</th><th>Open</th><th>Approved</th></tr></thead>
+      <tbody>
+        {% for owner, summary in executive.owner_summary.items() %}
+        <tr><td>{{ owner }}</td><td>{{ summary.total }}</td><td>{{ summary.open }}</td><td>{{ summary.approved }}</td></tr>
+        {% else %}
+        <tr><td colspan="4">No workload data yet.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</div>
+<div class="grid-2">
+  <section class="panel">
     <h3>Recent Workflow Activity</h3>
     <pre>{{ executive.activity | tojson(indent=2) }}</pre>
+  </section>
+  <section class="panel">
+    <h3>Audit Highlights</h3>
+    <pre>{{ executive.audit_highlights | tojson(indent=2) }}</pre>
   </section>
 </div>
 <section class="panel">

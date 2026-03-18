@@ -344,6 +344,7 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
             {
                 "item_ids": [queue_items[0]["item_id"]],
                 "status": "accepted",
+                "approval_status": "approved",
                 "owner": "reviewer1",
                 "campaign": "spring-cleanup",
             }
@@ -355,18 +356,38 @@ def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
     assert update_payload["updated"] == 1
     updated_queue = query_queue(web_config.db_path, run_id="run-web-001")
     assert updated_queue[0]["review_status"] == "accepted"
+    assert updated_queue[0]["approval_status"] == "approved"
     assert updated_queue[0]["owner"] == "reviewer1"
     assert updated_queue[0]["campaign"] == "spring-cleanup"
-    assert get_review_activity(web_config.db_path, run_id="run-web-001")
+    activity = get_review_activity(web_config.db_path, run_id="run-web-001")
+    assert activity
+    assert any(entry["activity_type"] == "approval_update" for entry in activity)
+
+    status, _, comment_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/comments",
+        body=json.dumps({"item_id": queue_items[0]["item_id"], "comment": "Owner confirmed change window"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "200 OK"
+    assert json.loads(comment_body)["comment"]["author"] == "reviewer1"
+    activity = get_review_activity(web_config.db_path, run_id="run-web-001")
+    assert any(entry["activity_type"] == "comment_added" for entry in activity)
 
     status, _, queue_html = _call_app(app_obj, method="GET", path="/queue?run_id=run-web-001&campaign=spring-cleanup", cookie=reviewer_cookie)
     assert status == "200 OK"
     assert "spring-cleanup" in queue_html
+    assert "approved" in queue_html
 
     status, _, campaign_html = _call_app(app_obj, method="GET", path="/campaigns", cookie=reviewer_cookie)
     assert status == "200 OK"
     assert "Spring Cleanup" in campaign_html
     assert "reviewer1" in campaign_html
+
+    status, _, rule_html = _call_app(app_obj, method="GET", path="/rules/rule-1?run_id=run-web-001", cookie=reviewer_cookie)
+    assert status == "200 OK"
+    assert "Owner confirmed change window" in rule_html
 
 
 def test_web_app_artifacts_and_ticket_export(tmp_path: Path):
@@ -396,6 +417,69 @@ def test_web_app_artifacts_and_ticket_export(tmp_path: Path):
     export_payload = json.loads(export_body)
     assert export_payload["run_id"] == "run-web-001"
     assert (tmp_path / "output" / "reports" / "run-web-001" / "ticket-drafts.json").exists()
+
+
+def test_executive_surface_includes_campaign_team_and_audit_metrics(tmp_path: Path):
+    config_path, payload, app_obj, _ = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
+    RUNNER.invoke(
+        app,
+        [
+            "web",
+            "create-user",
+            "--config",
+            str(config_path),
+            "--username",
+            "reviewer1",
+            "--role",
+            "reviewer",
+            "--password",
+            "secret-reviewer",
+        ],
+    )
+    reviewer_cookie = _login_cookie(app_obj, username="reviewer1", password="secret-reviewer")
+    status, _, campaign_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/campaigns",
+        body=json.dumps({"campaign_key": "exec-campaign", "name": "Executive Campaign", "summary": "Track approvals"}).encode("utf-8"),
+        cookie=admin_cookie,
+    )
+    assert status == "200 OK"
+    queue_item = query_queue(load_web_config(load_settings(config_path, require_credentials=False), config_path=tmp_path / "config" / "web.yaml").db_path, run_id="run-web-001")[0]
+    _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps(
+            {
+                "item_ids": [queue_item["item_id"]],
+                "status": "accepted",
+                "approval_status": "approved",
+                "owner": "reviewer1",
+                "campaign": "exec-campaign",
+            }
+        ).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    _call_app(
+        app_obj,
+        method="POST",
+        path="/api/comments",
+        body=json.dumps({"item_id": queue_item["item_id"], "comment": "Executive-ready"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+
+    status, _, executive_html = _call_app(app_obj, method="GET", path="/executive", cookie=admin_cookie)
+    assert status == "200 OK"
+    assert "Executive Campaign" in executive_html
+    assert "reviewer1" in executive_html
+    assert "approved" in executive_html
+    assert "comment_added" in executive_html
 
 
 def test_web_serve_command_invokes_server(monkeypatch, tmp_path: Path):

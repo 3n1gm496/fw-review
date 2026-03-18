@@ -8,11 +8,11 @@
   <div class="hero-actions">
     <a href="/queue{% if overview %}?run_id={{ overview.run_id }}{% endif %}"><button type="button" class="secondary">Open Queue</button></a>
     <a href="/campaigns"><button type="button" class="secondary">Open Campaigns</button></a>
-    <form method="post" action="/api/run" onsubmit="event.preventDefault(); fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strict_validate:true})}).then(()=>window.location.reload());">
+    <form method="post" action="/api/run" onsubmit="event.preventDefault(); launchRun(this);">
       {% if current_user.role not in ['approver','admin'] %}
-      <button type="submit" disabled title="Approver role required">Launch Run</button>
+      <button id="launch-run-button" type="submit" disabled title="Approver role required">Launch Run</button>
       {% else %}
-      <button type="submit">Launch Run</button>
+      <button id="launch-run-button" type="submit">Launch Run</button>
       {% endif %}
     </form>
   </div>
@@ -107,4 +107,33 @@
   </div>
 </section>
 {% endif %}
+<script>
+async function launchRun(form) {
+  const button = document.getElementById('launch-run-button');
+  if (button.disabled) {
+    return;
+  }
+  button.disabled = true;
+  button.textContent = 'Launching...';
+  const response = await fetch('/api/run', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({strict_validate: true}),
+  });
+  const body = await response.json();
+  if (!response.ok && response.status !== 202 && response.status !== 409) {
+    button.disabled = false;
+    button.textContent = 'Launch Run';
+    window.alert(body.error || 'Run launch failed.');
+    return;
+  }
+  if (response.status === 409) {
+    button.disabled = false;
+    button.textContent = 'Launch Run';
+    window.alert(body.job ? `A run is already active in phase ${body.job.phase}.` : 'A run is already active.');
+    return;
+  }
+  window.location.reload();
+}
+</script>
 {% endblock %}

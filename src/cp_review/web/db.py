@@ -676,38 +676,13 @@ def update_queue_state(
         clauses.append("rule_uid = ?")
         values.append(rule_uid)
     selectors = " OR ".join(clauses)
-    fields: list[str] = []
-    updates: list[Any] = []
-    if status is not None:
-        fields.append("review_status = ?")
-        updates.append(status)
-    if approval_status is not None:
-        fields.append("approval_status = ?")
-        updates.append(approval_status)
-    if owner is not None:
-        fields.append("owner = ?")
-        updates.append(owner)
-    if campaign is not None:
-        fields.append("campaign = ?")
-        updates.append(campaign)
-    if due_date is not None:
-        fields.append("due_date = ?")
-        updates.append(due_date)
-    if notes is not None:
-        fields.append("notes = ?")
-        updates.append(notes)
-    fields.append("updated_at = ?")
-    updates.append(_now())
     with connect(db_path) as conn:
         selected_rows = conn.execute(
             f"SELECT item_id, run_id, rule_uid, review_status, approval_status, owner, campaign, due_date, notes FROM queue_items WHERE {selectors}",
             tuple(values),
         ).fetchall()
-        cursor = conn.execute(
-            f"UPDATE queue_items SET {', '.join(fields)} WHERE {selectors}",
-            tuple(updates + values),
-        )
         changed_at = _now()
+        changed_rows = []
         for row in selected_rows:
             previous_state = {
                 "review_status": str(row["review_status"]),
@@ -725,12 +700,33 @@ def update_queue_state(
                 "due_date": due_date if due_date is not None else str(row["due_date"] or ""),
                 "notes": notes if notes is not None else str(row["notes"] or ""),
             }
+            if new_state == previous_state:
+                continue
+            changed_rows.append((row, previous_state, new_state))
+        for row, previous_state, new_state in changed_rows:
+            conn.execute(
+                """
+                UPDATE queue_items
+                SET review_status = ?, approval_status = ?, owner = ?, campaign = ?, due_date = ?, notes = ?, updated_at = ?
+                WHERE item_id = ?
+                """,
+                (
+                    new_state["review_status"],
+                    new_state["approval_status"],
+                    new_state["owner"],
+                    new_state["campaign"],
+                    new_state["due_date"] or None,
+                    new_state["notes"],
+                    changed_at,
+                    str(row["item_id"]),
+                ),
+            )
             activity_type = "workflow_update"
-            if approval_status is not None and approval_status != previous_state["approval_status"]:
+            if new_state["approval_status"] != previous_state["approval_status"]:
                 activity_type = "approval_update"
-            elif owner is not None and owner != previous_state["owner"]:
+            elif new_state["owner"] != previous_state["owner"] or new_state["campaign"] != previous_state["campaign"]:
                 activity_type = "assignment_update"
-            elif notes is not None and notes != previous_state["notes"]:
+            elif new_state["notes"] != previous_state["notes"]:
                 activity_type = "comment_update"
             conn.execute(
                 "INSERT INTO review_activity(run_id, item_id, rule_uid, activity_type, status, approval_status, owner, campaign, notes, previous_state_json, new_state_json, changed_at, changed_by) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -751,7 +747,7 @@ def update_queue_state(
                 ),
             )
         conn.commit()
-        return int(cursor.rowcount)
+        return len(changed_rows)
 
 
 def record_simulation(db_path: Path, *, run_id: str, rule_uid: str, payload: dict[str, Any]) -> None:
@@ -900,6 +896,20 @@ def add_review_comment(
         if row is None:
             raise ValueError(f"Unknown queue item: {item_id}")
         created_at = _now()
+        duplicate = conn.execute(
+            """
+            SELECT run_id, item_id, rule_uid, comment, author, created_at
+            FROM review_comments
+            WHERE item_id = ? AND author = ? AND comment = ?
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (item_id, author, comment),
+        ).fetchone()
+        if duplicate is not None:
+            duplicate_created = _parse_timestamp(str(duplicate["created_at"]))
+            if datetime.now(UTC) - duplicate_created <= timedelta(seconds=15):
+                return ReviewComment.model_validate(dict(duplicate)).model_dump(mode="json")
         conn.execute(
             "INSERT INTO review_comments(run_id, item_id, rule_uid, comment, author, created_at) VALUES(?, ?, ?, ?, ?, ?)",
             (str(row["run_id"]), item_id, str(row["rule_uid"]), comment, author, created_at),

@@ -87,7 +87,7 @@
     <input id="bulk-owner" placeholder="owner">
     <input id="bulk-campaign" placeholder="campaign">
     <input id="bulk-notes" placeholder="notes">
-    <button type="button" onclick="applyBulkUpdate()">Apply to selected</button>
+    <button id="bulk-apply-button" type="button" onclick="applyBulkUpdate()">Apply to selected</button>
     <button type="button" class="secondary" onclick="exportTickets()">Export ticket drafts</button>
   </div>
   <div id="bulk-feedback" class="small muted" style="margin-top:10px;"></div>
@@ -174,11 +174,14 @@
 <script>
 async function applyBulkUpdate() {
   const feedback = document.getElementById('bulk-feedback');
+  const button = document.getElementById('bulk-apply-button');
   const itemIds = Array.from(document.querySelectorAll('.queue-item:checked')).map((item) => item.value);
   if (!itemIds.length) {
     window.alert('Select at least one remediation item first.');
     return;
   }
+  button.disabled = true;
+  feedback.textContent = 'Applying workflow update...';
   const payload = {
     item_ids: itemIds,
     status: document.getElementById('bulk-status').value,
@@ -198,6 +201,7 @@ async function applyBulkUpdate() {
   const body = await response.json();
   if (!response.ok) {
     feedback.textContent = body.error || 'Bulk update failed.';
+    button.disabled = false;
     return;
   }
   feedback.textContent = `Updated ${body.updated} queue item(s) across ${body.runs.length} run(s).`;

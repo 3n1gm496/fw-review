@@ -7,6 +7,15 @@
   </div>
 </div>
 
+{% if campaigns %}
+<div class="cards">
+  <div class="card"><strong>{{ campaigns | length }}</strong><span>Total campaigns</span></div>
+  <div class="card"><strong>{{ campaigns | selectattr('queue_count') | map(attribute='queue_count') | sum }}</strong><span>Tracked queue items</span></div>
+  <div class="card"><strong>{{ campaigns | selectattr('open_count') | map(attribute='open_count') | sum }}</strong><span>Open campaign items</span></div>
+  <div class="card"><strong>{{ campaigns | map(attribute='members') | map('length') | sum }}</strong><span>Campaign memberships</span></div>
+</div>
+{% endif %}
+
 <section class="panel panel-accent">
   <h3>Create Campaign</h3>
   <div class="inline-form">
@@ -14,8 +23,9 @@
     <input id="campaign-name" placeholder="display name">
     <input id="campaign-owner" placeholder="owner" value="{{ current_user.username }}">
     <input id="campaign-summary" placeholder="summary">
-    <button type="button" onclick="createCampaign()">Save campaign</button>
+    <button id="campaign-submit" type="button" onclick="createCampaign()">Save campaign</button>
   </div>
+  <div class="small muted" style="margin-top:10px;">Double submit protection is enabled in the UI. Use an existing active user as owner.</div>
   <div id="campaign-feedback" class="small muted" style="margin-top:10px;"></div>
 </section>
 
@@ -62,6 +72,10 @@
 
 <script>
 async function createCampaign() {
+  const button = document.getElementById('campaign-submit');
+  const feedback = document.getElementById('campaign-feedback');
+  button.disabled = true;
+  feedback.textContent = 'Saving campaign...';
   const payload = {
     campaign_key: document.getElementById('campaign-key').value,
     name: document.getElementById('campaign-name').value,
@@ -75,9 +89,11 @@ async function createCampaign() {
   });
   const body = await response.json();
   if (!response.ok) {
-    document.getElementById('campaign-feedback').textContent = body.error || 'Campaign creation failed.';
+    feedback.textContent = body.error || 'Campaign creation failed.';
+    button.disabled = false;
     return;
   }
+  feedback.textContent = 'Campaign saved. Reloading board...';
   window.location.reload();
 }
 </script>

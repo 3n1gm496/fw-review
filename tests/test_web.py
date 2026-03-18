@@ -29,7 +29,14 @@ from cp_review.review_queue import (
 from cp_review.run_manifest import write_run_manifest
 from cp_review.web.app import WebApplication
 from cp_review.web.config import load_web_config
-from cp_review.web.db import get_review_activity, get_run, list_review_comments, query_queue
+from cp_review.web.db import (
+    create_run_job,
+    get_recent_run_jobs,
+    get_review_activity,
+    get_run,
+    list_review_comments,
+    query_queue,
+)
 
 RUNNER = CliRunner()
 
@@ -702,3 +709,100 @@ def test_web_rebuild_preserves_shared_state_and_comments(tmp_path: Path):
     assert any(comment["comment"] == "preserve this" for comment in comments)
     activity = get_review_activity(web_config.db_path, run_id="run-web-001")
     assert any(entry["activity_type"] == "comment_added" for entry in activity)
+
+
+def test_duplicate_workflow_update_and_comment_are_idempotent(tmp_path: Path):
+    config_path, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    RUNNER.invoke(
+        app,
+        [
+            "web",
+            "create-user",
+            "--config",
+            str(config_path),
+            "--username",
+            "reviewer1",
+            "--role",
+            "reviewer",
+            "--password",
+            "secret-reviewer",
+        ],
+    )
+    reviewer_cookie = _login_cookie(app_obj, username="reviewer1", password="secret-reviewer")
+    queue_item = query_queue(web_config.db_path, run_id="run-web-001")[0]
+
+    status, _, first_update = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps({"item_ids": [queue_item["item_id"]], "status": "accepted", "owner": "reviewer1"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "200 OK"
+    assert json.loads(first_update)["updated"] == 1
+
+    status, _, second_update = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps({"item_ids": [queue_item["item_id"]], "status": "accepted", "owner": "reviewer1"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "400 Bad Request"
+    assert "already applied" in second_update
+
+    activity = get_review_activity(web_config.db_path, run_id="run-web-001")
+    assignment_updates = [entry for entry in activity if entry["activity_type"] == "assignment_update"]
+    assert len(assignment_updates) == 1
+
+    status, _, first_comment = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/comments",
+        body=json.dumps({"item_id": queue_item["item_id"], "comment": "same note"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "200 OK"
+    first_comment_payload = json.loads(first_comment)["comment"]
+
+    status, _, second_comment = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/comments",
+        body=json.dumps({"item_id": queue_item["item_id"], "comment": "same note"}).encode("utf-8"),
+        cookie=reviewer_cookie,
+    )
+    assert status == "200 OK"
+    second_comment_payload = json.loads(second_comment)["comment"]
+    assert second_comment_payload["created_at"] == first_comment_payload["created_at"]
+
+    comments = [comment for comment in list_review_comments(web_config.db_path, run_id="run-web-001") if comment["comment"] == "same note"]
+    assert len(comments) == 1
+
+
+def test_run_launch_busy_state_and_run_detail_page(tmp_path: Path):
+    _, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
+    create_run_job(web_config.db_path, job_id="job-busy", message="Existing run in progress")
+
+    status, _, body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/run",
+        body=json.dumps({"strict_validate": True}).encode("utf-8"),
+        cookie=admin_cookie,
+    )
+    assert status == "409 Conflict"
+    assert json.loads(body)["summary"] == "busy"
+
+    jobs = get_recent_run_jobs(web_config.db_path, limit=5)
+    assert jobs[0]["job_id"] == "job-busy"
+
+    status, _, run_detail_html = _call_app(app_obj, method="GET", path="/runs/run-web-001", cookie=admin_cookie)
+    assert status == "200 OK"
+    assert "Run Summary" in run_detail_html
+    assert "Queue Readiness" in run_detail_html

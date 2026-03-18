@@ -397,7 +397,7 @@ def persist_review_state(
         changed_by=changed_by,
     )
     if updated == 0:
-        raise ValueError("no matching queue items were found for the requested update")
+        raise ValueError("no matching queue items were found, or the requested workflow state was already applied")
     runs = {item["run_id"] for item in query_queue(web_config.db_path, limit=5000) if (item_ids and item["item_id"] in item_ids) or (rule_uid and item["rule_uid"] == rule_uid)}
     for current_run_id in runs:
         payload = export_review_state_payload(web_config.db_path, run_id=current_run_id)

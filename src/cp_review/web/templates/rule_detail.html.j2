@@ -52,7 +52,7 @@
       <select id="detail-approval" {% if current_user.role not in ['approver','admin'] %}disabled{% endif %}>{% for option in ['pending','approved','rejected'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}</select>
       <input id="detail-owner" placeholder="owner">
       <input id="detail-campaign" placeholder="campaign">
-      <button type="button" onclick="updateRuleState()">Update workflow</button>
+      <button id="detail-update-button" type="button" onclick="updateRuleState()">Update workflow</button>
     </div>
     <div id="detail-feedback" class="small muted" style="margin-top:10px;"></div>
     {% else %}
@@ -104,7 +104,7 @@
     {% if current_user.role in ['reviewer','approver','admin'] and payload.queue_items %}
     <div class="inline-form" style="margin-bottom:14px;">
       <input id="detail-comment" placeholder="Add reviewer note or owner feedback" style="min-width:320px;">
-      <button type="button" class="secondary" onclick="addComment()">Add comment</button>
+      <button id="detail-comment-button" type="button" class="secondary" onclick="addComment()">Add comment</button>
     </div>
     {% endif %}
     {% if comments %}
@@ -135,6 +135,9 @@
 
 <script>
 async function updateRuleState() {
+  const button = document.getElementById('detail-update-button');
+  button.disabled = true;
+  document.getElementById('detail-feedback').textContent = 'Updating workflow...';
   const payload = {
     rule_uid: '{{ payload.rule.rule_uid }}',
     status: document.getElementById('detail-status').value,
@@ -153,17 +156,21 @@ async function updateRuleState() {
   const body = await response.json();
   if (!response.ok) {
     document.getElementById('detail-feedback').textContent = body.error || 'Rule workflow update failed.';
+    button.disabled = false;
     return;
   }
   window.location.reload();
 }
 async function addComment() {
+  const button = document.getElementById('detail-comment-button');
   const itemId = '{{ payload.queue_items[0].item_id if payload.queue_items else "" }}';
   const comment = document.getElementById('detail-comment').value;
   if (!itemId || !comment) {
     window.alert('Provide a comment first.');
     return;
   }
+  button.disabled = true;
+  document.getElementById('detail-feedback').textContent = 'Saving comment...';
   const response = await fetch('/api/comments', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -172,6 +179,7 @@ async function addComment() {
   const body = await response.json();
   if (!response.ok) {
     document.getElementById('detail-feedback').textContent = body.error || 'Comment could not be added.';
+    button.disabled = false;
     return;
   }
   window.location.reload();

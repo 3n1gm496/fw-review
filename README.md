@@ -108,6 +108,7 @@ make benchmark
 - `make web` launches the remediation cockpit on `127.0.0.1:8765`.
 - CI workflows under `.github/workflows/` run the same checks on pull requests.
 - See [`ROADMAP.md`](ROADMAP.md) for the enterprise hardening plan.
+- See [`HANDOFF.md`](HANDOFF.md) for current release status, office startup flow, and operational handoff notes.
 
 ## Web Cockpit
 

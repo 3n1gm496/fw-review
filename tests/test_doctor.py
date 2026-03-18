@@ -29,6 +29,7 @@ def test_doctor_local_checks_ok_without_ca_bundle(monkeypatch, tmp_path: Path):
     assert result["summary"] == "ok"
     statuses = {item["name"]: item["status"] for item in result["checks"]}
     assert statuses["output_dir_writable"] == "ok"
+    assert statuses["ca_bundle_path"] == "ok"
     assert statuses["credentials_env"] == "ok"
 
 

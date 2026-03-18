@@ -7,6 +7,8 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+config/settings.yaml
+config/review_rules.yaml
 output/raw/*
 output/normalized/*
 output/reports/*

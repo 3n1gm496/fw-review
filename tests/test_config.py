@@ -90,3 +90,30 @@ def test_latest_file_prefers_timestamped_run_directory_over_mtime_skew(tmp_path)
     older_file.touch()
 
     assert latest_file(normalized_dir, "*/dataset.json") == newer_file
+
+
+def test_load_settings_resolves_review_rules_relative_to_repo_root(tmp_path, monkeypatch):
+    config_dir = tmp_path / "config"
+    config_dir.mkdir()
+    review_rules = config_dir / "review_rules.yaml"
+    review_rules.write_text(
+        "analysis:\n  low_hit_threshold: 11\n",
+        encoding="utf-8",
+    )
+    config_path = config_dir / "settings.yaml"
+    config_path.write_text(
+        """
+management:
+  host: mgmt.example.local
+analysis:
+  review_rules_path: ./config/review_rules.yaml
+""".strip(),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+
+    settings = load_settings(config_path)
+
+    assert settings.analysis.review_rules_path == review_rules.resolve()
+    assert settings.analysis.low_hit_threshold == 11

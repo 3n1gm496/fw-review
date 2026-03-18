@@ -47,7 +47,7 @@ def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool
         else:
             checks.append({"name": "ca_bundle_path", "status": "fail", "details": f"Missing file: {bundle_path}"})
     else:
-        checks.append({"name": "ca_bundle_path", "status": "warn", "details": "No CA bundle configured"})
+        checks.append({"name": "ca_bundle_path", "status": "ok", "details": "No CA bundle configured; using system trust store"})
 
     review_rules_path = settings.analysis.review_rules_path
     if review_rules_path:

@@ -114,6 +114,14 @@ def run_web_doctor(settings, web_config: WebConfig, *, web_config_path: Path) ->
                 "details": settings.management.ca_bundle,
             }
         )
+    else:
+        checks.append(
+            {
+                "name": "ca_bundle_exists",
+                "status": "ok",
+                "details": "No CA bundle configured; using system trust store",
+            }
+        )
     has_fail = any(check["status"] == "fail" for check in checks)
     return {"summary": "fail" if has_fail else "ok", "checks": checks}
 

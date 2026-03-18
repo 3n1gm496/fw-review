@@ -70,7 +70,7 @@ DEFAULT_SETTINGS_TEMPLATE = """management:
   host: "mgmt.example.local"
   username_env: "CP_MGMT_USERNAME"
   password_env: "CP_MGMT_PASSWORD"
-  ca_bundle: "/opt/certs/internal_ca.pem"
+  ca_bundle: null
   insecure: false
   timeout_seconds: 60
   max_retries: 4

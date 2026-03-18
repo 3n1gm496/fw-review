@@ -146,7 +146,7 @@ def load_settings(
     if review_path_value:
         review_path = Path(review_path_value)
         if not review_path.is_absolute():
-            review_path = (config_dir / review_path).resolve()
+            review_path = (repo_root / review_path).resolve()
         if review_path.exists():
             with review_path.open("r", encoding="utf-8") as handle:
                 review_data = yaml.safe_load(handle) or {}
@@ -178,7 +178,7 @@ def load_settings(
     if not settings.collection.output_dir.is_absolute():
         settings.collection.output_dir = (repo_root / settings.collection.output_dir).resolve()
     if settings.analysis.review_rules_path and not settings.analysis.review_rules_path.is_absolute():
-        settings.analysis.review_rules_path = (config_dir / settings.analysis.review_rules_path).resolve()
+        settings.analysis.review_rules_path = (repo_root / settings.analysis.review_rules_path).resolve()
     return settings
 
 

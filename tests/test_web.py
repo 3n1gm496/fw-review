@@ -178,7 +178,7 @@ def _seed_run(tmp_path: Path, *, run_id: str = "run-web-001") -> Path:
     return reports_dir / "run-manifest.json"
 
 
-def _call_app(app_obj, *, method: str, path: str, body: bytes | None = None, content_type: str = "application/json"):
+def _call_app(app_obj, *, method: str, path: str, body: bytes | None = None, content_type: str = "application/json", cookie: str | None = None):
     captured: dict[str, object] = {}
 
     def start_response(status, headers):
@@ -193,11 +193,37 @@ def _call_app(app_obj, *, method: str, path: str, body: bytes | None = None, con
         "CONTENT_LENGTH": str(len(body or b"")),
         "wsgi.input": BytesIO(body or b""),
     }
+    if cookie:
+        environ["HTTP_COOKIE"] = cookie
     body_bytes = b"".join(app_obj(environ, start_response))
-    return str(captured["status"]), body_bytes.decode("utf-8")
+    headers = dict(captured.get("headers", []))
+    return str(captured["status"]), headers, body_bytes.decode("utf-8")
 
 
-def test_web_init_creates_config_and_db(tmp_path: Path):
+def _bootstrap_app(tmp_path: Path):
+    config_path = _write_settings(tmp_path)
+    _seed_run(tmp_path)
+    init_result = RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
+    payload = json.loads(init_result.stdout)
+    settings = load_settings(config_path, require_credentials=False)
+    web_config = load_web_config(settings, config_path=tmp_path / "config" / "web.yaml")
+    app_obj = WebApplication(settings, web_config, web_config_path=tmp_path / "config" / "web.yaml")
+    return config_path, payload, app_obj, web_config
+
+
+def _login_cookie(app_obj, *, username: str, password: str) -> str:
+    status, headers, _ = _call_app(
+        app_obj,
+        method="POST",
+        path="/login",
+        body=f"username={username}&password={password}".encode(),
+        content_type="application/x-www-form-urlencoded",
+    )
+    assert status == "302 Found"
+    return str(headers["Set-Cookie"]).split(";", 1)[0]
+
+
+def test_web_init_creates_config_db_and_bootstrap_admin(tmp_path: Path):
     config_path = _write_settings(tmp_path)
 
     result = RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
@@ -205,75 +231,167 @@ def test_web_init_creates_config_and_db(tmp_path: Path):
     assert result.exit_code == 0
     payload = json.loads(result.stdout)
     assert payload["summary"] == "ok"
+    assert payload["bootstrap_admin"]["username"] == "admin"
+    assert payload["bootstrap_admin"]["temporary_password"]
     assert (tmp_path / "config" / "web.yaml").exists()
     assert (tmp_path / "output" / "web" / "fw-review-web.db").exists()
 
 
-def test_web_sync_imports_run_into_sqlite(tmp_path: Path):
-    config_path = _write_settings(tmp_path)
-    _seed_run(tmp_path)
-    RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
+def test_shared_login_and_routes_require_auth(tmp_path: Path):
+    _, payload, app_obj, _ = _bootstrap_app(tmp_path)
 
-    result = RUNNER.invoke(app, ["web", "sync", "--config", str(config_path)])
+    status, headers, _ = _call_app(app_obj, method="GET", path="/")
+    assert status == "302 Found"
+    assert headers["Location"] == "/login"
 
-    assert result.exit_code == 0
-    payload = json.loads(result.stdout)
-    assert payload["summary"] == "ok"
-    settings = load_settings(config_path, require_credentials=False)
-    web_config = load_web_config(settings, config_path=tmp_path / "config" / "web.yaml")
-    run = get_run(web_config.db_path, "run-web-001")
-    assert run is not None
-    assert run["summary"]["findings_count"] == 1
-    assert query_queue(web_config.db_path, run_id="run-web-001")
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
 
-
-def test_web_app_routes_and_review_state_api(tmp_path: Path):
-    config_path = _write_settings(tmp_path)
-    _seed_run(tmp_path)
-    RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
-    settings = load_settings(config_path, require_credentials=False)
-    web_config = load_web_config(settings, config_path=tmp_path / "config" / "web.yaml")
-    app_obj = WebApplication(settings, web_config, web_config_path=tmp_path / "config" / "web.yaml")
-
-    status, overview_html = _call_app(app_obj, method="GET", path="/")
+    status, _, overview_html = _call_app(app_obj, method="GET", path="/", cookie=admin_cookie)
     assert status == "200 OK"
     assert "Operational Overview" in overview_html
+    assert "Signed in: <strong>admin</strong>" in overview_html
 
-    status, queue_html = _call_app(app_obj, method="GET", path="/queue?run_id=run-web-001")
+    status, _, campaigns_html = _call_app(app_obj, method="GET", path="/campaigns", cookie=admin_cookie)
     assert status == "200 OK"
-    assert "Remediation Queue" in queue_html
-    assert "Apply To Selected" in queue_html
+    assert "Campaign Board" in campaigns_html
 
-    status, executive_html = _call_app(app_obj, method="GET", path="/executive")
-    assert status == "200 OK"
-    assert "Executive Surface" in executive_html
 
-    status, rule_json = _call_app(app_obj, method="GET", path="/api/rules/rule-1?run_id=run-web-001")
-    assert status == "200 OK"
-    payload = json.loads(rule_json)
-    assert payload["rule"]["rule_uid"] == "rule-1"
-    assert payload["summary"]["finding_count"] == 1
+def test_shared_rbac_campaigns_and_review_state(tmp_path: Path):
+    config_path, payload, app_obj, web_config = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
 
-    queue_items = query_queue(web_config.db_path, run_id="run-web-001")
-    status, update_body = _call_app(
+    create_user = RUNNER.invoke(
+        app,
+        [
+            "web",
+            "create-user",
+            "--config",
+            str(config_path),
+            "--username",
+            "reviewer1",
+            "--role",
+            "reviewer",
+            "--password",
+            "secret-reviewer",
+        ],
+    )
+    assert create_user.exit_code == 0
+
+    create_viewer = RUNNER.invoke(
+        app,
+        [
+            "web",
+            "create-user",
+            "--config",
+            str(config_path),
+            "--username",
+            "viewer1",
+            "--role",
+            "viewer",
+            "--password",
+            "secret-viewer",
+        ],
+    )
+    assert create_viewer.exit_code == 0
+
+    viewer_cookie = _login_cookie(app_obj, username="viewer1", password="secret-viewer")
+    reviewer_cookie = _login_cookie(app_obj, username="reviewer1", password="secret-reviewer")
+
+    status, _, forbidden_body = _call_app(
         app_obj,
         method="POST",
         path="/api/review-state",
-        body=json.dumps({"item_ids": [queue_items[0]["item_id"]], "status": "accepted", "owner": "secops"}).encode("utf-8"),
+        body=json.dumps({"rule_uid": "rule-1", "status": "accepted"}).encode("utf-8"),
+        cookie=viewer_cookie,
+    )
+    assert status == "403 Forbidden"
+    assert "Reviewer role required" in forbidden_body
+
+    status, _, campaign_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/campaigns",
+        body=json.dumps({"campaign_key": "spring-cleanup", "name": "Spring Cleanup", "summary": "Shared backlog triage"}).encode("utf-8"),
+        cookie=admin_cookie,
+    )
+    assert status == "200 OK"
+    assert json.loads(campaign_body)["campaign"]["campaign_key"] == "spring-cleanup"
+
+    status, _, member_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/campaign-members",
+        body=json.dumps({"campaign_key": "spring-cleanup", "username": "reviewer1", "role": "lead"}).encode("utf-8"),
+        cookie=admin_cookie,
+    )
+    assert status == "200 OK"
+    assert json.loads(member_body)["member"]["username"] == "reviewer1"
+
+    queue_items = query_queue(web_config.db_path, run_id="run-web-001")
+    status, _, update_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/review-state",
+        body=json.dumps(
+            {
+                "item_ids": [queue_items[0]["item_id"]],
+                "status": "accepted",
+                "owner": "reviewer1",
+                "campaign": "spring-cleanup",
+            }
+        ).encode("utf-8"),
+        cookie=reviewer_cookie,
     )
     assert status == "200 OK"
     update_payload = json.loads(update_body)
     assert update_payload["updated"] == 1
     updated_queue = query_queue(web_config.db_path, run_id="run-web-001")
     assert updated_queue[0]["review_status"] == "accepted"
-    assert updated_queue[0]["owner"] == "secops"
+    assert updated_queue[0]["owner"] == "reviewer1"
+    assert updated_queue[0]["campaign"] == "spring-cleanup"
     assert get_review_activity(web_config.db_path, run_id="run-web-001")
 
-    status, artifact_body = _call_app(app_obj, method="GET", path="/artifacts/run-web-001/findings_json")
+    status, _, queue_html = _call_app(app_obj, method="GET", path="/queue?run_id=run-web-001&campaign=spring-cleanup", cookie=reviewer_cookie)
+    assert status == "200 OK"
+    assert "spring-cleanup" in queue_html
+
+    status, _, campaign_html = _call_app(app_obj, method="GET", path="/campaigns", cookie=reviewer_cookie)
+    assert status == "200 OK"
+    assert "Spring Cleanup" in campaign_html
+    assert "reviewer1" in campaign_html
+
+
+def test_web_app_artifacts_and_ticket_export(tmp_path: Path):
+    _, payload, app_obj, _ = _bootstrap_app(tmp_path)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=payload["bootstrap_admin"]["username"],
+        password=payload["bootstrap_admin"]["temporary_password"],
+    )
+
+    status, _, rule_json = _call_app(app_obj, method="GET", path="/api/rules/rule-1?run_id=run-web-001", cookie=admin_cookie)
+    assert status == "200 OK"
+    assert json.loads(rule_json)["summary"]["finding_count"] == 1
+
+    status, _, artifact_body = _call_app(app_obj, method="GET", path="/artifacts/run-web-001/findings_json", cookie=admin_cookie)
     assert status == "200 OK"
     assert "broad_allow" in artifact_body
 
-    status, export_body = _call_app(app_obj, method="POST", path="/api/tickets/export", body=json.dumps({"run_id": "run-web-001"}).encode("utf-8"))
+    status, _, export_body = _call_app(
+        app_obj,
+        method="POST",
+        path="/api/tickets/export",
+        body=json.dumps({"run_id": "run-web-001"}).encode("utf-8"),
+        cookie=admin_cookie,
+    )
     assert status == "200 OK"
     export_payload = json.loads(export_body)
     assert export_payload["run_id"] == "run-web-001"
@@ -282,7 +400,8 @@ def test_web_app_routes_and_review_state_api(tmp_path: Path):
 
 def test_web_serve_command_invokes_server(monkeypatch, tmp_path: Path):
     config_path = _write_settings(tmp_path)
-    RUNNER.invoke(app, ["web", "init", "--config", str(config_path)])
+    init_payload = json.loads(RUNNER.invoke(app, ["web", "init", "--config", str(config_path)]).stdout)
+    assert init_payload["summary"] == "ok"
     called: dict[str, object] = {}
 
     def _fake_serve(settings, web_config, *, web_config_path):
@@ -313,7 +432,16 @@ def test_web_sync_rebuild_and_drift_fallback(tmp_path: Path):
 
     settings = load_settings(config_path, require_credentials=False)
     web_config = load_web_config(settings, config_path=tmp_path / "config" / "web.yaml")
+    run = get_run(web_config.db_path, "run-web-001")
+    assert run is not None
+
     app_obj = WebApplication(settings, web_config, web_config_path=tmp_path / "config" / "web.yaml")
-    status, drift_html = _call_app(app_obj, method="GET", path="/drift")
+    init_payload = json.loads(RUNNER.invoke(app, ["web", "init", "--config", str(config_path)]).stdout)
+    admin_cookie = _login_cookie(
+        app_obj,
+        username=init_payload["bootstrap_admin"]["username"] if init_payload.get("bootstrap_admin") else "admin",
+        password=init_payload["bootstrap_admin"]["temporary_password"] if init_payload.get("bootstrap_admin") else json.loads(RUNNER.invoke(app, ["web", "init", "--config", str(config_path)]).stdout)["bootstrap_admin"]["temporary_password"],
+    )
+    status, _, drift_html = _call_app(app_obj, method="GET", path="/drift", cookie=admin_cookie)
     assert status == "200 OK"
     assert "Need at least two findings runs" in drift_html

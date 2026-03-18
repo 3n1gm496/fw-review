@@ -6,7 +6,11 @@
     <p>Local-first cockpit for remediation campaigns, health, drift and run orchestration.</p>
   </div>
   <form method="post" action="/api/run" onsubmit="event.preventDefault(); fetch('/api/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({strict_validate:true})}).then(()=>window.location.reload());">
+    {% if current_user.role not in ['approver','admin'] %}
+    <button type="submit" disabled title="Approver role required">Launch Run</button>
+    {% else %}
     <button type="submit">Launch Run</button>
+    {% endif %}
   </form>
 </div>
 {% if overview %}

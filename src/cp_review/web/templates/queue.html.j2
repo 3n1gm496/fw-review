@@ -45,6 +45,7 @@
 
 <section class="panel">
   <h3>Bulk Update</h3>
+  {% if current_user.role in ['reviewer','approver','admin'] %}
   <div class="inline-form">
     <select id="bulk-status">
       {% for option in ['new','accepted','false_positive','needs_owner_input','deferred','done'] %}<option value="{{ option }}">{{ option }}</option>{% endfor %}
@@ -55,6 +56,9 @@
     <button type="button" onclick="applyBulkUpdate()">Apply To Selected</button>
     <button type="button" class="secondary" onclick="exportTickets()">Export Ticket Drafts</button>
   </div>
+  {% else %}
+  <p class="muted">Viewer role: queue updates and ticket export are disabled.</p>
+  {% endif %}
 </section>
 
 <section class="panel">

@@ -215,3 +215,55 @@ class TicketLink(BaseModel):
     external_id: str = ""
     state: str = "local_only"
     synced_at: datetime | None = None
+
+
+class UserRole(BaseModel):
+    """Role assigned to one cockpit user."""
+
+    username: str
+    role: str
+
+
+class WebSession(BaseModel):
+    """Authenticated shared-web session."""
+
+    session_id: str
+    username: str
+    role: str
+    created_at: datetime
+    expires_at: datetime
+
+
+class Campaign(BaseModel):
+    """Shared remediation campaign."""
+
+    campaign_key: str
+    name: str
+    status: str = "active"
+    owner: str
+    summary: str = ""
+    due_date: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class CampaignMembership(BaseModel):
+    """User membership in a remediation campaign."""
+
+    campaign_key: str
+    username: str
+    role: str = "member"
+
+
+class RunJobStatus(BaseModel):
+    """Shared run-job state for the cockpit backend."""
+
+    job_id: str
+    status: str
+    phase: str
+    run_id: str | None = None
+    message: str = ""
+    summary: dict[str, Any] = Field(default_factory=dict)
+    started_at: datetime
+    updated_at: datetime
+    completed_at: datetime | None = None

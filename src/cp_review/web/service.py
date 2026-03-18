@@ -20,20 +20,31 @@ from cp_review.simulation import simulate_rule_change
 from cp_review.validate_run import validate_run_manifest
 from cp_review.web.config import WebConfig, write_web_config
 from cp_review.web.db import (
+    add_campaign_member,
+    authenticate_user,
     create_run_job,
+    create_session,
+    delete_session,
+    ensure_bootstrap_admin,
     export_ticket_drafts,
     get_active_run_job,
     get_review_activity,
+    get_session,
     import_run,
     init_db,
     latest_run_id,
+    list_campaign_members,
+    list_campaigns,
     list_runs,
     query_queue,
     rebuild_db,
     record_explanation,
     record_simulation,
+    require_role,
     update_queue_state,
     update_run_job,
+    upsert_campaign,
+    upsert_user,
 )
 from cp_review.web.db import (
     export_review_state as export_review_state_payload,
@@ -57,6 +68,7 @@ def init_web_workspace(settings, web_config: WebConfig, *, web_config_path: Path
     settings.collection.output_dir.mkdir(parents=True, exist_ok=True)
     web_config.app_dir.mkdir(parents=True, exist_ok=True)
     init_db(web_config.db_path)
+    bootstrap_admin = ensure_bootstrap_admin(web_config.db_path)
     written_config = write_web_config(web_config_path, web_config, force=force)
     sync_report = sync_runs(settings, web_config)
     doctor_report = run_web_doctor(settings, web_config, web_config_path=written_config)
@@ -67,6 +79,7 @@ def init_web_workspace(settings, web_config: WebConfig, *, web_config_path: Path
         "app_dir": str(web_config.app_dir),
         "sync": sync_report,
         "doctor": doctor_report,
+        "bootstrap_admin": bootstrap_admin,
     }
 
 
@@ -95,6 +108,82 @@ def run_web_doctor(settings, web_config: WebConfig, *, web_config_path: Path) ->
         )
     has_fail = any(check["status"] == "fail" for check in checks)
     return {"summary": "fail" if has_fail else "ok", "checks": checks}
+
+
+def authenticate_shared_user(web_config: WebConfig, *, username: str, password: str) -> dict[str, Any] | None:
+    principal = authenticate_user(web_config.db_path, username=username, password=password)
+    if principal is None:
+        return None
+    session = create_session(
+        web_config.db_path,
+        username=str(principal["username"]),
+        role=str(principal["role"]),
+        ttl_hours=web_config.session_ttl_hours,
+    )
+    return {"user": principal, "session": session}
+
+
+def resolve_session(web_config: WebConfig, *, session_id: str | None) -> dict[str, Any] | None:
+    if not session_id:
+        return None
+    return get_session(web_config.db_path, session_id)
+
+
+def logout_shared_user(web_config: WebConfig, *, session_id: str | None) -> None:
+    if session_id:
+        delete_session(web_config.db_path, session_id)
+
+
+def ensure_role(session: dict[str, Any] | None, minimum_role: str) -> bool:
+    if session is None:
+        return False
+    return require_role(str(session.get("role", "")), minimum_role)
+
+
+def create_or_update_user(web_config: WebConfig, *, username: str, role: str, password: str) -> dict[str, Any]:
+    return upsert_user(web_config.db_path, username=username, role=role, password=password)
+
+
+def create_or_update_campaign(
+    web_config: WebConfig,
+    *,
+    campaign_key: str,
+    name: str,
+    owner: str,
+    summary: str = "",
+    status: str = "active",
+    due_date: str | None = None,
+) -> dict[str, Any]:
+    return upsert_campaign(
+        web_config.db_path,
+        campaign_key=campaign_key,
+        name=name,
+        owner=owner,
+        summary=summary,
+        status=status,
+        due_date=due_date,
+    )
+
+
+def add_shared_campaign_member(web_config: WebConfig, *, campaign_key: str, username: str, role: str = "member") -> dict[str, Any]:
+    return add_campaign_member(web_config.db_path, campaign_key=campaign_key, username=username, role=role)
+
+
+def load_campaign_board(web_config: WebConfig) -> dict[str, Any]:
+    campaigns = list_campaigns(web_config.db_path)
+    enriched: list[dict[str, Any]] = []
+    for campaign in campaigns:
+        members = list_campaign_members(web_config.db_path, str(campaign["campaign_key"]))
+        queue_items = query_queue(web_config.db_path, campaign=str(campaign["campaign_key"]), limit=500)
+        enriched.append(
+            {
+                **campaign,
+                "members": members,
+                "queue_count": len(queue_items),
+                "open_count": len([item for item in queue_items if item.get("review_status") not in {"done", "false_positive"}]),
+            }
+        )
+    return {"campaigns": enriched}
 
 
 def sync_runs(settings, web_config: WebConfig, *, run_id: str | None = None) -> dict[str, Any]:
@@ -209,6 +298,7 @@ def persist_review_state(
     campaign: str | None = None,
     due_date: str | None = None,
     notes: str | None = None,
+    changed_by: str = "system",
 ) -> dict[str, Any]:
     updated = update_queue_state(
         web_config.db_path,
@@ -219,6 +309,7 @@ def persist_review_state(
         campaign=campaign,
         due_date=due_date,
         notes=notes,
+        changed_by=changed_by,
     )
     runs = {item["run_id"] for item in query_queue(web_config.db_path, limit=5000) if (item_ids and item["item_id"] in item_ids) or (rule_uid and item["rule_uid"] == rule_uid)}
     for current_run_id in runs:

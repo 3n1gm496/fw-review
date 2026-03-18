@@ -1,15 +1,29 @@
-"""SQLite persistence for the local-first web app."""
+"""SQLite persistence for the remediation cockpit, including shared-web state."""
 
 from __future__ import annotations
 
+import base64
+import hashlib
+import hmac
 import json
+import secrets
 import shutil
 import sqlite3
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from cp_review.models import ReviewActivity, ReviewQueueItem, ReviewStateEntry, TicketDraft
+from cp_review.models import (
+    Campaign,
+    CampaignMembership,
+    ReviewActivity,
+    ReviewQueueItem,
+    ReviewStateEntry,
+    RunJobStatus,
+    TicketDraft,
+    UserRole,
+    WebSession,
+)
 
 SCHEMA = """
 PRAGMA journal_mode=WAL;
@@ -99,20 +113,77 @@ CREATE TABLE IF NOT EXISTS review_activity (
     owner TEXT NOT NULL,
     campaign TEXT NOT NULL,
     notes TEXT NOT NULL,
-    changed_at TEXT NOT NULL
+    changed_at TEXT NOT NULL,
+    changed_by TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS users (
+    username TEXT PRIMARY KEY,
+    role TEXT NOT NULL,
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    disabled INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS sessions (
+    session_id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    role TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS campaigns (
+    campaign_key TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    status TEXT NOT NULL,
+    owner TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    due_date TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS campaign_members (
+    campaign_key TEXT NOT NULL,
+    username TEXT NOT NULL,
+    role TEXT NOT NULL,
+    PRIMARY KEY (campaign_key, username)
 );
 CREATE INDEX IF NOT EXISTS idx_queue_run_id ON queue_items(run_id);
 CREATE INDEX IF NOT EXISTS idx_queue_rule_uid ON queue_items(rule_uid);
 CREATE INDEX IF NOT EXISTS idx_queue_status ON queue_items(review_status);
 CREATE INDEX IF NOT EXISTS idx_runs_generated_at ON runs(generated_at DESC);
 CREATE INDEX IF NOT EXISTS idx_activity_run_id ON review_activity(run_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_username ON sessions(username);
+CREATE INDEX IF NOT EXISTS idx_campaign_owner ON campaigns(owner);
 """
 
-SCHEMA_VERSION = "2"
+SCHEMA_VERSION = "3"
+
+ROLE_ORDER = {"viewer": 1, "reviewer": 2, "approver": 3, "admin": 4}
 
 
 def _now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _parse_timestamp(value: str) -> datetime:
+    return datetime.fromisoformat(value)
+
+
+def _hash_password(password: str, *, salt: bytes | None = None) -> str:
+    actual_salt = salt or secrets.token_bytes(16)
+    digest = hashlib.scrypt(password.encode("utf-8"), salt=actual_salt, n=2**14, r=8, p=1)
+    return f"{base64.b64encode(actual_salt).decode('ascii')}:{base64.b64encode(digest).decode('ascii')}"
+
+
+def _verify_password(password: str, stored_hash: str) -> bool:
+    try:
+        salt_b64, digest_b64 = stored_hash.split(":", 1)
+        salt = base64.b64decode(salt_b64.encode("ascii"))
+        expected = base64.b64decode(digest_b64.encode("ascii"))
+    except ValueError:
+        return False
+    candidate = hashlib.scrypt(password.encode("utf-8"), salt=salt, n=2**14, r=8, p=1)
+    return hmac.compare_digest(candidate, expected)
 
 
 def connect(db_path: Path) -> sqlite3.Connection:
@@ -404,6 +475,7 @@ def update_queue_state(
     campaign: str | None = None,
     due_date: str | None = None,
     notes: str | None = None,
+    changed_by: str = "system",
 ) -> int:
     init_db(db_path)
     if not item_ids and not rule_uid:
@@ -449,7 +521,7 @@ def update_queue_state(
         changed_at = _now()
         for row in selected_rows:
             conn.execute(
-                "INSERT INTO review_activity(run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO review_activity(run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at, changed_by) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     str(row["run_id"]),
                     str(row["item_id"]),
@@ -459,6 +531,7 @@ def update_queue_state(
                     campaign if campaign is not None else str(row["campaign"] or ""),
                     notes if notes is not None else str(row["notes"] or ""),
                     changed_at,
+                    changed_by,
                 ),
             )
         conn.commit()
@@ -542,9 +615,17 @@ def get_active_run_job(db_path: Path) -> dict[str, Any] | None:
         ).fetchone()
     if row is None:
         return None
-    result = dict(row)
-    result["summary"] = json.loads(str(result.pop("summary_json") or "{}"))
-    return result
+    return RunJobStatus(
+        job_id=str(row["job_id"]),
+        status=str(row["status"]),
+        phase=str(row["phase"]),
+        run_id=str(row["run_id"]) if row["run_id"] else None,
+        message=str(row["message"] or ""),
+        summary=json.loads(str(row["summary_json"] or "{}")),
+        started_at=_parse_timestamp(str(row["started_at"])),
+        updated_at=_parse_timestamp(str(row["updated_at"])),
+        completed_at=_parse_timestamp(str(row["completed_at"])) if row["completed_at"] else None,
+    ).model_dump(mode="json")
 
 
 def get_recent_run_jobs(db_path: Path, *, limit: int = 10) -> list[dict[str, Any]]:
@@ -553,9 +634,19 @@ def get_recent_run_jobs(db_path: Path, *, limit: int = 10) -> list[dict[str, Any
         rows = conn.execute("SELECT * FROM run_jobs ORDER BY started_at DESC LIMIT ?", (limit,)).fetchall()
     result: list[dict[str, Any]] = []
     for row in rows:
-        job = dict(row)
-        job["summary"] = json.loads(str(job.pop("summary_json") or "{}"))
-        result.append(job)
+        result.append(
+            RunJobStatus(
+                job_id=str(row["job_id"]),
+                status=str(row["status"]),
+                phase=str(row["phase"]),
+                run_id=str(row["run_id"]) if row["run_id"] else None,
+                message=str(row["message"] or ""),
+                summary=json.loads(str(row["summary_json"] or "{}")),
+                started_at=_parse_timestamp(str(row["started_at"])),
+                updated_at=_parse_timestamp(str(row["updated_at"])),
+                completed_at=_parse_timestamp(str(row["completed_at"])) if row["completed_at"] else None,
+            ).model_dump(mode="json")
+        )
     return result
 
 
@@ -565,8 +656,7 @@ def get_review_activity(db_path: Path, *, run_id: str | None = None, limit: int 
     values: tuple[Any, ...] = (run_id, limit) if run_id else (limit,)
     with connect(db_path) as conn:
         rows = conn.execute(
-            f"SELECT run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at "
-            f"FROM review_activity {where} ORDER BY changed_at DESC LIMIT ?",
+            f"SELECT run_id, item_id, rule_uid, status, owner, campaign, notes, changed_at FROM review_activity {where} ORDER BY changed_at DESC LIMIT ?",
             values,
         ).fetchall()
     return [ReviewActivity.model_validate(dict(row)).model_dump(mode="json") for row in rows]
@@ -625,3 +715,230 @@ def export_ticket_drafts(
         )
         drafts.append(draft.model_dump(mode="json"))
     return drafts
+
+
+def upsert_user(db_path: Path, *, username: str, role: str, password: str, disabled: bool = False) -> dict[str, Any]:
+    init_db(db_path)
+    if role not in ROLE_ORDER:
+        raise ValueError(f"Unsupported role: {role}")
+    now = _now()
+    password_hash = _hash_password(password)
+    with connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO users(username, role, password_hash, created_at, updated_at, disabled)
+            VALUES(?, ?, ?, ?, ?, ?)
+            ON CONFLICT(username) DO UPDATE SET
+              role=excluded.role,
+              password_hash=excluded.password_hash,
+              updated_at=excluded.updated_at,
+              disabled=excluded.disabled
+            """,
+            (username, role, password_hash, now, now, 1 if disabled else 0),
+        )
+        conn.commit()
+    return {"username": username, "role": role, "disabled": disabled}
+
+
+def list_users(db_path: Path) -> list[dict[str, Any]]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT username, role, created_at, updated_at, disabled FROM users ORDER BY username"
+        ).fetchall()
+    return [
+        {
+            "username": str(row["username"]),
+            "role": str(row["role"]),
+            "created_at": str(row["created_at"]),
+            "updated_at": str(row["updated_at"]),
+            "disabled": bool(row["disabled"]),
+        }
+        for row in rows
+    ]
+
+
+def get_user_role(db_path: Path, username: str) -> dict[str, Any] | None:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT username, role, disabled FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    if row is None:
+        return None
+    return UserRole(username=str(row["username"]), role=str(row["role"])).model_dump(mode="json") | {
+        "disabled": bool(row["disabled"])
+    }
+
+
+def authenticate_user(db_path: Path, *, username: str, password: str) -> dict[str, Any] | None:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT username, role, password_hash, disabled FROM users WHERE username = ?",
+            (username,),
+        ).fetchone()
+    if row is None or bool(row["disabled"]):
+        return None
+    if not _verify_password(password, str(row["password_hash"])):
+        return None
+    return {"username": str(row["username"]), "role": str(row["role"])}
+
+
+def ensure_bootstrap_admin(db_path: Path, *, username: str = "admin") -> dict[str, Any] | None:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        existing = conn.execute("SELECT username FROM users LIMIT 1").fetchone()
+    if existing is not None:
+        return None
+    password = secrets.token_urlsafe(12)
+    upsert_user(db_path, username=username, role="admin", password=password)
+    return {"username": username, "temporary_password": password}
+
+
+def create_session(db_path: Path, *, username: str, role: str, ttl_hours: int) -> dict[str, Any]:
+    init_db(db_path)
+    now = datetime.now(UTC)
+    payload = WebSession(
+        session_id=secrets.token_urlsafe(24),
+        username=username,
+        role=role,
+        created_at=now,
+        expires_at=now + timedelta(hours=ttl_hours),
+    )
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT INTO sessions(session_id, username, role, created_at, expires_at) VALUES(?, ?, ?, ?, ?)",
+            (
+                payload.session_id,
+                payload.username,
+                payload.role,
+                payload.created_at.isoformat(),
+                payload.expires_at.isoformat(),
+            ),
+        )
+        conn.commit()
+    return payload.model_dump(mode="json")
+
+
+def get_session(db_path: Path, session_id: str) -> dict[str, Any] | None:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT session_id, username, role, created_at, expires_at FROM sessions WHERE session_id = ?",
+            (session_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    session = WebSession(
+        session_id=str(row["session_id"]),
+        username=str(row["username"]),
+        role=str(row["role"]),
+        created_at=_parse_timestamp(str(row["created_at"])),
+        expires_at=_parse_timestamp(str(row["expires_at"])),
+    )
+    if session.expires_at <= datetime.now(UTC):
+        delete_session(db_path, session_id)
+        return None
+    return session.model_dump(mode="json")
+
+
+def delete_session(db_path: Path, session_id: str) -> None:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        conn.execute("DELETE FROM sessions WHERE session_id = ?", (session_id,))
+        conn.commit()
+
+
+def require_role(role: str, minimum_role: str) -> bool:
+    return ROLE_ORDER.get(role, 0) >= ROLE_ORDER.get(minimum_role, 0)
+
+
+def list_campaigns(db_path: Path) -> list[dict[str, Any]]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT campaign_key, name, status, owner, summary, due_date, created_at, updated_at FROM campaigns ORDER BY updated_at DESC, campaign_key"
+        ).fetchall()
+    return [
+        Campaign(
+            campaign_key=str(row["campaign_key"]),
+            name=str(row["name"]),
+            status=str(row["status"]),
+            owner=str(row["owner"]),
+            summary=str(row["summary"] or ""),
+            due_date=_parse_timestamp(str(row["due_date"])) if row["due_date"] else None,
+            created_at=_parse_timestamp(str(row["created_at"])),
+            updated_at=_parse_timestamp(str(row["updated_at"])),
+        ).model_dump(mode="json")
+        for row in rows
+    ]
+
+
+def get_campaign(db_path: Path, campaign_key: str) -> dict[str, Any] | None:
+    campaigns = [campaign for campaign in list_campaigns(db_path) if campaign["campaign_key"] == campaign_key]
+    if not campaigns:
+        return None
+    return campaigns[0]
+
+
+def upsert_campaign(
+    db_path: Path,
+    *,
+    campaign_key: str,
+    name: str,
+    owner: str,
+    summary: str = "",
+    status: str = "active",
+    due_date: str | None = None,
+) -> dict[str, Any]:
+    init_db(db_path)
+    now = _now()
+    with connect(db_path) as conn:
+        existing = conn.execute("SELECT created_at FROM campaigns WHERE campaign_key = ?", (campaign_key,)).fetchone()
+        created_at = str(existing["created_at"]) if existing else now
+        conn.execute(
+            """
+            INSERT INTO campaigns(campaign_key, name, status, owner, summary, due_date, created_at, updated_at)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(campaign_key) DO UPDATE SET
+              name=excluded.name,
+              status=excluded.status,
+              owner=excluded.owner,
+              summary=excluded.summary,
+              due_date=excluded.due_date,
+              updated_at=excluded.updated_at
+            """,
+            (campaign_key, name, status, owner, summary, due_date, created_at, now),
+        )
+        conn.execute(
+            "INSERT OR IGNORE INTO campaign_members(campaign_key, username, role) VALUES(?, ?, ?)",
+            (campaign_key, owner, "owner"),
+        )
+        conn.commit()
+    campaign = get_campaign(db_path, campaign_key)
+    if campaign is None:
+        raise RuntimeError(f"Campaign not persisted: {campaign_key}")
+    return campaign
+
+
+def add_campaign_member(db_path: Path, *, campaign_key: str, username: str, role: str = "member") -> dict[str, Any]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO campaign_members(campaign_key, username, role) VALUES(?, ?, ?)",
+            (campaign_key, username, role),
+        )
+        conn.commit()
+    return CampaignMembership(campaign_key=campaign_key, username=username, role=role).model_dump(mode="json")
+
+
+def list_campaign_members(db_path: Path, campaign_key: str) -> list[dict[str, Any]]:
+    init_db(db_path)
+    with connect(db_path) as conn:
+        rows = conn.execute(
+            "SELECT campaign_key, username, role FROM campaign_members WHERE campaign_key = ? ORDER BY username",
+            (campaign_key,),
+        ).fetchall()
+    return [CampaignMembership.model_validate(dict(row)).model_dump(mode="json") for row in rows]

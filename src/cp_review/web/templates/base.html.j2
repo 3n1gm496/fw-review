@@ -73,6 +73,7 @@
         <h1>fw-review<br>Remediation Cockpit</h1>
         <a href="/" class="{% if current == 'overview' %}active{% endif %}">Overview</a>
         <a href="/queue" class="{% if current == 'queue' %}active{% endif %}">Queue</a>
+        <a href="/campaigns" class="{% if current == 'campaigns' %}active{% endif %}">Campaigns</a>
         <a href="/executive" class="{% if current == 'executive' %}active{% endif %}">Executive</a>
         <a href="/runs" class="{% if current == 'runs' %}active{% endif %}">Runs</a>
         <a href="/drift" class="{% if current == 'drift' %}active{% endif %}">Drift</a>
@@ -86,6 +87,11 @@
           {% if active_job %}
           <div style="margin-top:12px;">Active job: <strong>{{ active_job.phase }}</strong></div>
           <div>{{ active_job.message }}</div>
+          {% endif %}
+          {% if current_user %}
+          <div style="margin-top:12px;">Signed in: <strong>{{ current_user.username }}</strong></div>
+          <div>Role: <span class="badge ok">{{ current_user.role }}</span></div>
+          <div style="margin-top:10px;"><a href="/logout">Sign out</a></div>
           {% endif %}
         </div>
       </nav>

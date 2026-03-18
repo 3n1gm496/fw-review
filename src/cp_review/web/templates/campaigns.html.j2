@@ -1,0 +1,58 @@
+{% extends "base.html.j2" %}
+{% block content %}
+<div class="hero"><div><h2>Campaign Board</h2><p>Shared remediation campaigns with owner, members and workload visibility.</p></div></div>
+<section class="panel">
+  <h3>Create Campaign</h3>
+  <div class="inline-form">
+    <input id="campaign-key" placeholder="campaign key">
+    <input id="campaign-name" placeholder="display name">
+    <input id="campaign-owner" placeholder="owner" value="{{ current_user.username }}">
+    <input id="campaign-summary" placeholder="summary">
+    <button type="button" onclick="createCampaign()">Save Campaign</button>
+  </div>
+</section>
+<section class="panel">
+  <table>
+    <thead><tr><th>Campaign</th><th>Status</th><th>Owner</th><th>Open Items</th><th>Members</th></tr></thead>
+    <tbody>
+      {% for campaign in campaigns %}
+      <tr>
+        <td><strong>{{ campaign.name }}</strong><div class="muted">{{ campaign.campaign_key }}</div><div>{{ campaign.summary }}</div></td>
+        <td>{{ campaign.status }}</td>
+        <td>{{ campaign.owner }}</td>
+        <td>{{ campaign.open_count }}/{{ campaign.queue_count }}</td>
+        <td>
+          {% for member in campaign.members %}
+          <div>{{ member.username }} <span class="muted">({{ member.role }})</span></div>
+          {% else %}
+          <span class="muted">No members yet.</span>
+          {% endfor %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">No campaigns created yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+<script>
+async function createCampaign() {
+  const payload = {
+    campaign_key: document.getElementById('campaign-key').value,
+    name: document.getElementById('campaign-name').value,
+    owner: document.getElementById('campaign-owner').value,
+    summary: document.getElementById('campaign-summary').value,
+  };
+  const response = await fetch('/api/campaigns', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    window.alert('Campaign creation failed.');
+    return;
+  }
+  window.location.reload();
+}
+</script>
+{% endblock %}

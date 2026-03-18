@@ -18,6 +18,9 @@ class WebConfig(BaseModel):
     db_path: Path
     auto_sync_on_start: bool = True
     launch_strict_validate: bool = True
+    shared_mode: bool = True
+    session_cookie_name: str = "fw_review_session"
+    session_ttl_hours: int = 12
 
     @classmethod
     def defaults(cls, *, output_dir: Path) -> WebConfig:
@@ -25,7 +28,7 @@ class WebConfig(BaseModel):
         return cls(app_dir=app_dir, db_path=app_dir / "fw-review-web.db")
 
 
-DEFAULT_WEB_TEMPLATE = """web:\n  host: \"127.0.0.1\"\n  port: 8765\n  app_dir: \"./output/web\"\n  db_path: \"./output/web/fw-review-web.db\"\n  auto_sync_on_start: true\n  launch_strict_validate: true\n"""
+DEFAULT_WEB_TEMPLATE = """web:\n  host: \"127.0.0.1\"\n  port: 8765\n  app_dir: \"./output/web\"\n  db_path: \"./output/web/fw-review-web.db\"\n  auto_sync_on_start: true\n  launch_strict_validate: true\n  shared_mode: true\n  session_cookie_name: \"fw_review_session\"\n  session_ttl_hours: 12\n"""
 
 
 def load_web_config(settings, *, config_path: Path | None = None) -> WebConfig:
@@ -65,6 +68,9 @@ def write_web_config(path: Path, config: WebConfig, *, force: bool = False) -> P
             "db_path": str(config.db_path),
             "auto_sync_on_start": config.auto_sync_on_start,
             "launch_strict_validate": config.launch_strict_validate,
+            "shared_mode": config.shared_mode,
+            "session_cookie_name": config.session_cookie_name,
+            "session_ttl_hours": config.session_ttl_hours,
         }
     }
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")

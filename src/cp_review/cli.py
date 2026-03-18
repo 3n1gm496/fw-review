@@ -48,13 +48,15 @@ from cp_review.validate_run import validate_run_manifest
 from cp_review.web import serve_web_app
 from cp_review.web.config import load_web_config
 from cp_review.web.service import (
-    export_review_state as export_web_review_state,
-)
-from cp_review.web.service import (
+    create_or_update_campaign,
+    create_or_update_user,
     export_ticket_queue,
     init_web_workspace,
     rebuild_run_index,
     run_web_doctor,
+)
+from cp_review.web.service import (
+    export_review_state as export_web_review_state,
 )
 from cp_review.web.service import (
     sync_runs as sync_web_runs,
@@ -613,6 +615,47 @@ def web_export_tickets(
         output_path = settings.collection.output_dir / "reports" / selected_run_id / "ticket-drafts.json"
     path = export_ticket_queue(web_config, run_id=selected_run_id, base_url=base_url, output_path=output_path)
     typer.echo(json.dumps({"summary": "ok", "output_path": str(path), "run_id": selected_run_id}, indent=2, sort_keys=True))
+
+
+@web_app.command("create-user")
+def web_create_user(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    username: str = typer.Option(..., "--username", help="Cockpit username."),
+    role: str = typer.Option("viewer", "--role", help="viewer, reviewer, approver, or admin."),
+    password: str = typer.Option(..., "--password", help="Initial password for the user."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Create or update a shared cockpit user."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    created = create_or_update_user(web_config, username=username, role=role, password=password)
+    typer.echo(json.dumps({"summary": "ok", "user": created}, indent=2, sort_keys=True))
+
+
+@web_app.command("create-campaign")
+def web_create_campaign(
+    config: Path = typer.Option(..., "--config", exists=True, dir_okay=False, help="Path to YAML settings file."),
+    campaign_key: str = typer.Option(..., "--campaign-key", help="Stable campaign key."),
+    name: str = typer.Option(..., "--name", help="Display name."),
+    owner: str = typer.Option(..., "--owner", help="Campaign owner username."),
+    summary: str = typer.Option("", "--summary", help="Short campaign summary."),
+    due_date: str | None = typer.Option(None, "--due-date", help="Optional ISO date or datetime."),
+    env_file: Path | None = typer.Option(None, "--env-file", exists=True, dir_okay=False, help="Optional .env file."),
+) -> None:
+    """Create or update a shared remediation campaign."""
+    configure_logging()
+    settings = _load_config(config, env_file, None, None, None, require_credentials=False)
+    web_config = load_web_config(settings, config_path=_web_config_path(config))
+    campaign = create_or_update_campaign(
+        web_config,
+        campaign_key=campaign_key,
+        name=name,
+        owner=owner,
+        summary=summary,
+        due_date=due_date,
+    )
+    typer.echo(json.dumps({"summary": "ok", "campaign": campaign}, indent=2, sort_keys=True))
 
 
 @app.command()

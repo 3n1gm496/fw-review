@@ -15,7 +15,7 @@ def _write_settings(tmp_path: Path, *, html_report: bool = True, json_findings: 
     config_path.write_text(
         (
             "management:\n"
-            "  host: mgmt.example.local\n"
+            "  host: fw-mgmt.lab.local\n"
             "collection:\n"
             "  output_dir: ./output\n"
             "reporting:\n"
@@ -35,7 +35,7 @@ def _write_dataset(tmp_path: Path, *, run_id: str) -> Path:
             {
                 "generated_at": "2026-03-12T00:00:00Z",
                 "run_id": run_id,
-                "source_host": "mgmt.example.local",
+                "source_host": "fw-mgmt.lab.local",
                 "packages": ["Standard"],
                 "rules": [],
                 "log_evidence": {},
@@ -497,6 +497,25 @@ def test_cli_doctor_allows_missing_credentials_in_offline_mode(monkeypatch, tmp_
     assert result.exit_code == 0
 
 
+def test_cli_doctor_check_api_fails_fast_on_placeholder_host(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    config_path = tmp_path / "settings.yaml"
+    config_path.write_text(
+        "management:\n  host: mgmt.example.local\ncollection:\n  output_dir: ./output\n",
+        encoding="utf-8",
+    )
+
+    result = RUNNER.invoke(app, ["doctor", "--config", str(config_path), "--check-api"])
+
+    assert result.exit_code == 1
+    payload = json.loads(result.stdout)
+    checks = {item["name"]: item for item in payload["checks"]}
+    assert checks["management_host"]["status"] == "fail"
+    assert checks["api_login_readonly_call"]["status"] == "fail"
+    assert "Skipped API check" in checks["api_login_readonly_call"]["details"]
+
+
 def test_cli_validate_run_passes_for_latest_run(monkeypatch, tmp_path: Path):
     monkeypatch.delenv("CP_MGMT_USERNAME", raising=False)
     monkeypatch.delenv("CP_MGMT_PASSWORD", raising=False)
@@ -557,7 +576,7 @@ def test_cli_queue_and_explain_surface_actionable_output(monkeypatch, tmp_path: 
             {
                 "generated_at": "2026-03-12T00:00:00Z",
                 "run_id": "queue-run",
-                "source_host": "mgmt.example.local",
+                "source_host": "fw-mgmt.lab.local",
                 "packages": ["Standard"],
                 "rules": [
                     {
@@ -704,7 +723,7 @@ def test_cli_simulate_returns_covering_rule_analysis(monkeypatch, tmp_path: Path
             {
                 "generated_at": "2026-03-12T00:00:00Z",
                 "run_id": "simulate-run",
-                "source_host": "mgmt.example.local",
+                "source_host": "fw-mgmt.lab.local",
                 "packages": ["Standard"],
                 "rules": [
                     {

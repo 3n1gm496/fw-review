@@ -19,7 +19,7 @@ from cp_review.collectors.logs import collect_logs_for_rule_uids
 from cp_review.collectors.packages import collect_policy_snapshot
 from cp_review.compare import compare_findings
 from cp_review.config import apply_cli_overrides, build_run_paths, latest_file, load_settings
-from cp_review.doctor import run_local_readiness_checks
+from cp_review.doctor import has_placeholder_credentials, is_placeholder_management_host, run_local_readiness_checks
 from cp_review.exceptions import CpReviewError
 from cp_review.logging_conf import configure_logging
 from cp_review.models import FindingRecord
@@ -1181,12 +1181,29 @@ def doctor(
     checks = list(report["checks"])
 
     if check_api:
-        try:
-            with CheckPointClient(settings) as client:
-                client.call_api("show-packages", {"limit": 1, "offset": 0, "details-level": "standard"})
-            checks.append({"name": "api_login_readonly_call", "status": "ok", "details": "login/logout/show-packages succeeded"})
-        except Exception as exc:  # noqa: BLE001
-            checks.append({"name": "api_login_readonly_call", "status": "fail", "details": str(exc)})
+        if is_placeholder_management_host(settings.management.host):
+            checks.append(
+                {
+                    "name": "api_login_readonly_call",
+                    "status": "fail",
+                    "details": "Skipped API check: replace placeholder management.host with the real Check Point management server.",
+                }
+            )
+        elif has_placeholder_credentials(settings):
+            checks.append(
+                {
+                    "name": "api_login_readonly_call",
+                    "status": "fail",
+                    "details": "Skipped API check: replace placeholder API credentials in the configured environment variables.",
+                }
+            )
+        else:
+            try:
+                with CheckPointClient(settings) as client:
+                    client.call_api("show-packages", {"limit": 1, "offset": 0, "details-level": "standard"})
+                checks.append({"name": "api_login_readonly_call", "status": "ok", "details": "login/logout/show-packages succeeded"})
+            except Exception as exc:  # noqa: BLE001
+                checks.append({"name": "api_login_readonly_call", "status": "fail", "details": str(exc)})
 
     has_fail = any(item["status"] == "fail" for item in checks)
     typer.echo(json.dumps({"summary": "fail" if has_fail else "ok", "checks": checks}, indent=2, sort_keys=True))

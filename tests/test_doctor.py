@@ -8,10 +8,10 @@ from cp_review.config import AnalysisConfig, AppConfig, CollectionConfig, Manage
 from cp_review.doctor import run_local_readiness_checks
 
 
-def _settings(tmp_path: Path, *, ca_bundle: str | None = None) -> AppConfig:
+def _settings(tmp_path: Path, *, ca_bundle: str | None = None, host: str = "fw-mgmt.lab.local") -> AppConfig:
     return AppConfig(
         management=ManagementConfig(
-            host="mgmt.example.local",
+            host=host,
             username=SecretStr("user"),
             password=SecretStr("pass"),
             ca_bundle=ca_bundle,
@@ -57,3 +57,23 @@ def test_doctor_local_checks_warn_when_credentials_missing_offline(monkeypatch, 
     result = run_local_readiness_checks(_settings(tmp_path), require_credentials=False)
     statuses = {item["name"]: item["status"] for item in result["checks"]}
     assert statuses["credentials_env"] == "warn"
+
+
+def test_doctor_local_checks_fail_on_placeholder_host(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "pass")
+    result = run_local_readiness_checks(_settings(tmp_path, host="mgmt.example.local"))
+    assert result["summary"] == "fail"
+    checks = {item["name"]: item for item in result["checks"]}
+    assert checks["management_host"]["status"] == "fail"
+    assert "Placeholder host configured" in checks["management_host"]["details"]
+
+
+def test_doctor_local_checks_fail_on_placeholder_credentials(monkeypatch, tmp_path: Path):
+    monkeypatch.setenv("CP_MGMT_USERNAME", "readonly_api_user")
+    monkeypatch.setenv("CP_MGMT_PASSWORD", "replace_me")
+    result = run_local_readiness_checks(_settings(tmp_path))
+    assert result["summary"] == "fail"
+    checks = {item["name"]: item for item in result["checks"]}
+    assert checks["credentials_env"]["status"] == "fail"
+    assert "Placeholder values detected" in checks["credentials_env"]["details"]

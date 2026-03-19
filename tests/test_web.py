@@ -49,7 +49,7 @@ def _write_settings(tmp_path: Path) -> Path:
     config_path.write_text(
         (
             "management:\n"
-            "  host: mgmt.example.local\n"
+            "  host: fw-mgmt.lab.local\n"
             "collection:\n"
             "  output_dir: ./output\n"
             "reporting:\n"
@@ -64,7 +64,7 @@ def _write_settings(tmp_path: Path) -> Path:
 
 def _app_settings(tmp_path: Path) -> AppConfig:
     return AppConfig(
-        management=ManagementConfig(host="mgmt.example.local", username=SecretStr("user"), password=SecretStr("pass")),
+        management=ManagementConfig(host="fw-mgmt.lab.local", username=SecretStr("user"), password=SecretStr("pass")),
         collection=CollectionConfig(output_dir=tmp_path / "output"),
         analysis=AnalysisConfig(),
         reporting=ReportingConfig(),
@@ -80,7 +80,7 @@ def _seed_run(tmp_path: Path, *, run_id: str = "run-web-001") -> Path:
     dataset_payload = {
         "generated_at": "2026-03-18T10:00:00Z",
         "run_id": run_id,
-        "source_host": "mgmt.example.local",
+        "source_host": "fw-mgmt.lab.local",
         "packages": ["Standard"],
         "rules": [
             {

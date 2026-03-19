@@ -9,6 +9,25 @@ from typing import Any
 
 from cp_review.config import AppConfig
 
+PLACEHOLDER_HOSTS = {"mgmt.example.local", "example.local", "localhost", "127.0.0.1"}
+PLACEHOLDER_USERNAMES = {"readonly_api_user", "replace_me"}
+PLACEHOLDER_PASSWORDS = {"replace_me"}
+
+
+def is_placeholder_management_host(host: str | None) -> bool:
+    """Return True when the configured management host is an obvious placeholder."""
+    if not host:
+        return False
+    normalized = host.strip().lower()
+    return normalized in PLACEHOLDER_HOSTS or normalized.endswith(".example.local")
+
+
+def has_placeholder_credentials(settings: AppConfig) -> bool:
+    """Return True when configured credential env vars still contain example values."""
+    username = os.getenv(settings.management.username_env, "").strip().lower()
+    password = os.getenv(settings.management.password_env, "").strip().lower()
+    return username in PLACEHOLDER_USERNAMES or password in PLACEHOLDER_PASSWORDS
+
 
 def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool = True) -> dict[str, Any]:
     """Run local non-network checks and return a structured report."""
@@ -25,8 +44,20 @@ def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool
     checks.append(
         {
             "name": "management_host",
-            "status": "ok" if bool(settings.management.host) else "fail",
-            "details": settings.management.host or "missing host",
+            "status": (
+                "fail"
+                if not settings.management.host
+                else "fail"
+                if is_placeholder_management_host(settings.management.host)
+                else "ok"
+            ),
+            "details": (
+                "missing host"
+                if not settings.management.host
+                else f"Placeholder host configured: {settings.management.host}"
+                if is_placeholder_management_host(settings.management.host)
+                else settings.management.host
+            ),
         }
     )
 
@@ -73,8 +104,12 @@ def run_local_readiness_checks(settings: AppConfig, *, require_credentials: bool
         checks.append(
             {
                 "name": "credentials_env",
-                "status": "ok",
-                "details": f"{settings.management.username_env} and {settings.management.password_env} set",
+                "status": "fail" if has_placeholder_credentials(settings) else "ok",
+                "details": (
+                    f"Placeholder values detected in {settings.management.username_env}/{settings.management.password_env}"
+                    if has_placeholder_credentials(settings)
+                    else f"{settings.management.username_env} and {settings.management.password_env} set"
+                ),
             }
         )
     else:

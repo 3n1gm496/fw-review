@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Reviewer Workbench</div>
     <h2>Rule Detail</h2>
     <p>Review the rationale first, inspect related rules and queue actions next, and keep raw payloads as supporting evidence instead of the main view.</p>
   </div>
@@ -18,7 +19,7 @@
 </div>
 
 <div class="grid-2">
-  <section class="panel panel-accent">
+  <section class="panel spotlight">
     <h3>{{ payload.rule.rule_name or payload.rule.rule_uid }}</h3>
     <div class="summary-strip">
       <span class="summary-pill"><strong>Package:</strong> {{ payload.rule.package_name }}</span>
@@ -30,6 +31,7 @@
   </section>
   <section class="panel">
     <h3>Queue Workflow</h3>
+    <p class="table-intro">This block is the operational truth for the rule: action type, workflow state, approval gate and the next intended move.</p>
     {% if payload.queue_items %}
     <div class="table-wrap">
       <table>
@@ -67,6 +69,7 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Why This Rule Was Flagged</h3>
+    <p class="table-intro">Read this section as the analytical rationale: what was detected, how risky it is, and what evidence supports the recommendation.</p>
     {% if payload.findings %}
     <div class="stack">
       {% for finding in payload.findings %}
@@ -101,6 +104,7 @@
 
   <section class="panel">
     <h3>Comments</h3>
+    <p class="table-intro">Use comments for rollout caveats, owner feedback and approval context that should survive re-sync and shared review.</p>
     {% if current_user.role in ['reviewer','approver','admin'] and payload.queue_items %}
     <div class="inline-form" style="margin-bottom:14px;">
       <input id="detail-comment" placeholder="Add reviewer note or owner feedback" style="min-width:320px;">

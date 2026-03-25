@@ -401,12 +401,128 @@
         font-size: 0.92rem;
         border: 1px solid rgba(15, 106, 109, 0.08);
       }
+      .section-lead {
+        margin: -4px 0 14px;
+        color: var(--muted);
+        line-height: 1.6;
+      }
+      .table-intro {
+        margin: -4px 0 14px;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.55;
+      }
       .kpi-list {
         display: grid;
         gap: 10px;
         margin: 0;
         padding: 0;
         list-style: none;
+      }
+      .story-grid {
+        display: grid;
+        grid-template-columns: 1.3fr 1fr;
+        gap: 18px;
+      }
+      .story-stack {
+        display: grid;
+        gap: 14px;
+      }
+      .soft-panel {
+        padding: 16px;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.45);
+        border: 1px solid rgba(28, 47, 57, 0.08);
+      }
+      .soft-panel h4 {
+        margin: 0 0 8px;
+        font-size: 1rem;
+      }
+      .eyebrow-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 14px;
+        align-items: center;
+        margin-bottom: 12px;
+      }
+      .eyebrow-row .eyebrow {
+        margin: 0;
+      }
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+      }
+      .stat-chip {
+        padding: 12px 14px;
+        border-radius: 16px;
+        background: rgba(255,255,255,0.55);
+        border: 1px solid rgba(28, 47, 57, 0.08);
+      }
+      .stat-chip strong {
+        display: block;
+        font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+        font-size: 1.4rem;
+        line-height: 0.95;
+        letter-spacing: -0.03em;
+      }
+      .stat-chip span {
+        color: var(--muted);
+        font-size: 0.92rem;
+      }
+      .list-table {
+        display: grid;
+        gap: 10px;
+      }
+      .list-row {
+        display: grid;
+        grid-template-columns: minmax(0, 1.2fr) auto;
+        gap: 16px;
+        align-items: start;
+        padding: 14px 16px;
+        border-radius: 18px;
+        background: rgba(255,255,255,0.48);
+        border: 1px solid rgba(28, 47, 57, 0.08);
+      }
+      .list-row-title {
+        font-weight: 700;
+      }
+      .list-row-meta {
+        margin-top: 5px;
+        color: var(--muted);
+        font-size: 0.92rem;
+        line-height: 1.5;
+      }
+      .list-row-side {
+        text-align: right;
+      }
+      .pill-cluster {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      .metric-banner {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+        padding: 14px;
+        border-radius: 20px;
+        background: rgba(255,255,255,0.48);
+        border: 1px solid rgba(28, 47, 57, 0.08);
+      }
+      .metric-banner .metric {
+        padding: 6px 2px;
+      }
+      .metric-banner .metric strong {
+        display: block;
+        font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
+        font-size: 1.75rem;
+        line-height: 0.95;
+        letter-spacing: -0.04em;
+      }
+      .metric-banner .metric span {
+        color: var(--muted);
+        font-size: 0.92rem;
       }
       .kpi-row {
         display: flex;
@@ -497,6 +613,7 @@
         main { padding: 20px; }
         main::before { inset: 14px 14px auto 14px; height: 180px; }
         .grid-2, .grid-3 { grid-template-columns: 1fr; }
+        .story-grid { grid-template-columns: 1fr; }
         .hero { flex-direction: column; }
         .sticky-panel { position: static; }
         .mobile-only { display: inline; }

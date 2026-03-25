@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Leadership Readout</div>
     <h2>Executive Surface</h2>
     <p>Track cleanup progress, approval motion and campaign health without dropping into raw artifacts unless something really needs investigation.</p>
   </div>
@@ -17,7 +18,7 @@
 </div>
 
 {% if executive.latest_run %}
-<section class="panel panel-accent">
+<section class="panel spotlight">
   <h3>Executive Readout</h3>
   <div class="summary-strip">
     <span class="summary-pill"><strong>Latest run:</strong> {{ executive.latest_run.run_id }}</span>
@@ -31,6 +32,7 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Action Mix</h3>
+    <p class="table-intro">This is the operational shape of the backlog: what we can remove, what needs narrowing, and what needs structural cleanup.</p>
     {% if executive.queue_action_counts %}
     <ul class="kpi-list">
       {% for action, count in executive.queue_action_counts.items() %}
@@ -46,6 +48,7 @@
   </section>
   <section class="panel">
     <h3>Approval Mix</h3>
+    <p class="table-intro">This is the workflow heartbeat: how much is still pending, what has already cleared, and what is blocked or rejected.</p>
     {% if executive.approval_counts %}
     <ul class="kpi-list">
       {% for approval, count in executive.approval_counts.items() %}
@@ -64,22 +67,23 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Campaign Health</h3>
+    <p class="table-intro">Campaigns should read like delivery lanes: owner, team reach, open volume and whether they are still actively moving.</p>
     {% if executive.campaign_summary %}
-    <div class="table-wrap">
-      <table>
-        <thead><tr><th>Campaign</th><th>Owner</th><th>Status</th><th>Open</th><th>Members</th></tr></thead>
-        <tbody>
-          {% for campaign in executive.campaign_summary %}
-          <tr>
-            <td>{{ campaign.name }}</td>
-            <td>{{ campaign.owner }}</td>
-            <td><span class="badge {{ 'ok' if campaign.status == 'active' else 'warn' }}">{{ campaign.status }}</span></td>
-            <td>{{ campaign.open_count }}/{{ campaign.queue_count }}</td>
-            <td>{{ campaign.member_count }}</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-      </table>
+    <div class="list-table">
+      {% for campaign in executive.campaign_summary %}
+      {% set completion = 0 if not campaign.queue_count else (((campaign.queue_count - campaign.open_count) / campaign.queue_count) * 100) | round(0, 'floor') %}
+      <div class="list-row">
+        <div>
+          <div class="list-row-title">{{ campaign.name }}</div>
+          <div class="list-row-meta">Owner {{ campaign.owner }} · {{ campaign.member_count }} members · <span class="badge {{ 'ok' if campaign.status == 'active' else 'warn' }}">{{ campaign.status }}</span></div>
+          <div style="margin-top:12px;" class="progress"><div class="progress-bar" style="width: {{ completion }}%;"></div></div>
+          <div class="progress-meta"><span>{{ campaign.open_count }}/{{ campaign.queue_count }} open</span><strong>{{ completion }}%</strong></div>
+        </div>
+        <div class="list-row-side">
+          <a href="/queue?campaign={{ campaign.campaign_key }}"><button type="button" class="secondary">Open queue</button></a>
+        </div>
+      </div>
+      {% endfor %}
     </div>
     {% else %}
     <div class="empty-state">
@@ -90,6 +94,7 @@
   </section>
   <section class="panel">
     <h3>Owner Workload</h3>
+    <p class="table-intro">This tells us where queue weight is accumulating and who is carrying approved items versus still-open backlog.</p>
     {% if executive.owner_summary %}
     <div class="table-wrap">
       <table>
@@ -113,6 +118,7 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Recent Workflow Activity</h3>
+    <p class="table-intro">Use this as the motion log for the last shared changes across assignment, approval and analyst collaboration.</p>
     {% if executive.activity %}
     <div class="table-wrap">
       <table>
@@ -139,6 +145,7 @@
   </section>
   <section class="panel">
     <h3>Audit Highlights</h3>
+    <p class="table-intro">A compact count of what kind of activity is actually happening in the shared workflow right now.</p>
     {% if executive.audit_highlights %}
     <ul class="kpi-list">
       {% for event_type, count in executive.audit_highlights.items() %}
@@ -156,6 +163,7 @@
 
 <section class="panel">
   <h3>Trend</h3>
+  <p class="table-intro">A light historical view of backlog size, findings count and health score across indexed runs.</p>
   {% if executive.trend %}
   <div class="table-wrap">
     <table>

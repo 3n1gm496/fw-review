@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Shared Backlog Triage</div>
     <h2>Remediation Queue</h2>
     <p>Triage the backlog, keep review and approval separate, and move only the right items into campaigns or ticket export.</p>
   </div>
@@ -58,24 +59,43 @@
 </div>
 
 <section class="panel panel-accent">
-  <div class="split">
-    <div>
-      <h3>Workflow guidance</h3>
-      <p class="small muted">Use <strong>review status</strong> for analyst progress and <strong>approval status</strong> for go/no-go decisions. Keep owner and campaign explicit so rebuilds and resync stay deterministic.</p>
+  <div class="eyebrow-row">
+    <div class="eyebrow">Queue Operating Model</div>
+    <span class="badge {{ 'ok' if current_user.role in ['reviewer','approver','admin'] else 'warn' }}">{{ current_user.role }}</span>
+  </div>
+  <div class="story-grid">
+    <div class="story-stack">
+      <div class="soft-panel">
+        <h4>Review vs approval</h4>
+        <div class="table-intro">Use <strong>review status</strong> for analyst progress and <strong>approval status</strong> for go/no-go decisions. Keep owner and campaign explicit so rebuilds and resync stay deterministic.</div>
+        <div class="pill-cluster">
+          <span class="summary-pill">Review moves triage</span>
+          <span class="summary-pill">Approval gates change</span>
+          <span class="summary-pill">Campaigns make work visible</span>
+        </div>
+      </div>
     </div>
-    <div class="small muted">
-      {% if current_user.role in ['reviewer','approver','admin'] %}
-      Bulk update and ticket export are enabled for your role.
-      {% if current_user.role not in ['approver','admin'] %}<br>Approval changes still require an approver or admin.{% endif %}
-      {% else %}
-      Viewer role: queue mutation and ticket export stay disabled.
-      {% endif %}
+    <div class="soft-panel">
+      <h4>Role capability</h4>
+      <div class="table-intro">
+        {% if current_user.role in ['reviewer','approver','admin'] %}
+        Bulk update and ticket export are enabled for your role.
+        {% if current_user.role not in ['approver','admin'] %}<br>Approval changes still require an approver or admin.{% endif %}
+        {% else %}
+        Viewer role: queue mutation and ticket export stay disabled.
+        {% endif %}
+      </div>
+      <div class="stat-grid">
+        <div class="stat-chip"><strong>{{ items | length }}</strong><span>Visible items</span></div>
+        <div class="stat-chip"><strong>{{ recent_jobs | length }}</strong><span>Recent jobs</span></div>
+      </div>
     </div>
   </div>
 </section>
 
 <section class="panel">
   <h3>Bulk Update</h3>
+  <p class="table-intro">Apply workflow updates deliberately: pick the shortlist, stamp ownership, and only move approval when the evidence is ready.</p>
   {% if current_user.role in ['reviewer','approver','admin'] %}
   <div class="inline-form">
     <select id="bulk-status">
@@ -98,6 +118,7 @@
 
 <section class="panel">
   <h3>Triage Table</h3>
+  <p class="table-intro">Start with the rule identity and action, then scan priority, workflow state and rationale. The row should tell you enough before you even open rule detail.</p>
   {% if items %}
   <div class="table-wrap">
     <table>
@@ -146,6 +167,7 @@
 
 <section class="panel">
   <h3>Recent Jobs</h3>
+  <p class="table-intro">Keep an eye on run orchestration here when the queue has just been refreshed or a new collection is still moving through validation.</p>
   {% if recent_jobs %}
   <div class="table-wrap">
     <table>

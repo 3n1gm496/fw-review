@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Run Trust Layer</div>
     <h2>Run {{ run.run_id }}</h2>
     <p>Use this page to validate whether the run is trustworthy before you start triaging the queue or sharing its artifacts.</p>
   </div>
@@ -19,7 +20,7 @@
 </div>
 
 <div class="grid-2">
-  <section class="panel panel-accent">
+  <section class="panel spotlight">
     <h3>Run Summary</h3>
     <div class="summary-strip">
       <span class="summary-pill"><strong>Command:</strong> {{ run.command }}</span>
@@ -44,12 +45,13 @@
 
   <section class="panel">
     <h3>Queue Readiness</h3>
+    <p class="table-intro">Before opening the backlog, use this preview to judge whether the run is actually actionable or just artifact-complete.</p>
     {% if queue_items %}
-    <ul class="kpi-list">
-      <li class="kpi-row"><span>Top visible queue items</span><strong>{{ queue_items | length }}</strong></li>
-      <li class="kpi-row"><span>Highest priority in preview</span><strong>{{ queue_items[0].priority }}</strong></li>
-      <li class="kpi-row"><span>Top action</span><strong>{{ queue_items[0].action_type }}</strong></li>
-    </ul>
+    <div class="metric-banner">
+      <div class="metric"><strong>{{ queue_items | length }}</strong><span>Preview items</span></div>
+      <div class="metric"><strong>{{ queue_items[0].priority }}</strong><span>Highest priority</span></div>
+      <div class="metric"><strong>{{ queue_items[0].action_type }}</strong><span>Lead action</span></div>
+    </div>
     {% else %}
     <div class="empty-state">
       <strong>No queue items indexed for this run.</strong>
@@ -62,6 +64,7 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Artifacts</h3>
+    <p class="table-intro">These are the persisted outputs that make the run auditable and reusable across queue, drift and reporting surfaces.</p>
     <div class="table-wrap">
       <table>
         <thead><tr><th>Name</th><th>Open</th><th>Path</th></tr></thead>
@@ -80,6 +83,7 @@
 
   <section class="panel">
     <h3>Top Queue Items</h3>
+    <p class="table-intro">A compact first look at what the run wants you to do next, before you drill into the full remediation queue.</p>
     {% if queue_items %}
     <div class="table-wrap">
       <table>

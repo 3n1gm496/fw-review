@@ -124,17 +124,22 @@
       nav a {
         display: block;
         color: #f7f2e6;
-        padding: 12px 14px;
+        padding: 12px 14px 13px;
         border-radius: 14px;
         margin-bottom: 6px;
         border: 1px solid transparent;
-        transition: transform 120ms ease, background 120ms ease, border-color 120ms ease;
+        transition: transform 120ms ease, background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+        font-family: "Avenir Next", "Segoe UI", sans-serif;
+        font-size: 0.96rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
       }
       nav a.active, nav a:hover {
         background: rgba(255,255,255,0.12);
         border-color: rgba(255,255,255,0.08);
         text-decoration: none;
         transform: translateX(2px);
+        box-shadow: inset 0 1px 0 rgba(255,255,255,0.06);
       }
       nav .meta {
         margin-top: 22px;
@@ -197,9 +202,9 @@
         background: radial-gradient(circle, rgba(15, 106, 109, 0.14), transparent 66%);
       }
       .hero h2 {
-        margin: 0 0 10px;
+        margin: 0 0 12px;
         font-size: clamp(2rem, 2.8vw, 3.1rem);
-        line-height: 0.98;
+        line-height: 0.94;
         letter-spacing: -0.04em;
         max-width: 11ch;
       }
@@ -221,7 +226,7 @@
         height: 1px;
         background: linear-gradient(90deg, rgba(15, 106, 109, 0.25), rgba(15, 106, 109, 0.9));
       }
-      .hero p { margin: 0; color: var(--muted); max-width: 66ch; line-height: 1.65; font-size: 1.02rem; }
+      .hero p { margin: 0; color: var(--muted); max-width: 66ch; line-height: 1.68; font-size: 1.03rem; }
       .hero-actions { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
       .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 16px; margin: 18px 0 24px; }
       .card, .panel {
@@ -246,17 +251,18 @@
       .card strong {
         display: block;
         font-family: "Avenir Next Condensed", "Avenir Next", "Segoe UI", sans-serif;
-        font-size: 2.05rem;
-        margin-bottom: 8px;
+        font-size: 2.1rem;
+        margin-bottom: 9px;
         line-height: 0.92;
-        letter-spacing: -0.04em;
+        letter-spacing: -0.045em;
       }
-      .card span { color: var(--muted); line-height: 1.5; display: block; }
+      .card span { color: var(--muted); line-height: 1.52; display: block; font-size: 0.95rem; }
       .panel h3, .panel h4 {
         margin-top: 0;
-        margin-bottom: 14px;
-        font-size: 1.15rem;
-        letter-spacing: -0.02em;
+        margin-bottom: 12px;
+        font-size: 1.18rem;
+        line-height: 1.15;
+        letter-spacing: -0.025em;
       }
       .grid-2 { display: grid; grid-template-columns: 1.2fr 1fr; gap: 18px; }
       .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; }
@@ -264,21 +270,24 @@
       table { width: 100%; border-collapse: collapse; background: transparent; }
       th, td {
         text-align: left;
-        padding: 11px 12px;
+        padding: 12px 13px;
         border-bottom: 1px solid var(--line);
         vertical-align: top;
       }
       th {
         color: var(--muted);
         font-family: "Avenir Next", "Segoe UI", sans-serif;
-        font-size: 0.78rem;
+        font-size: 0.76rem;
         text-transform: uppercase;
-        letter-spacing: 0.12em;
+        letter-spacing: 0.14em;
         white-space: nowrap;
         background: rgba(255, 248, 238, 0.82);
         position: sticky;
         top: 0;
         z-index: 1;
+      }
+      td {
+        line-height: 1.52;
       }
       tbody tr:nth-child(even) { background: rgba(255,255,255,0.42); }
       tbody tr:hover { background: rgba(15, 106, 109, 0.06); }
@@ -291,15 +300,17 @@
       }
       .badge {
         display: inline-block;
-        padding: 5px 10px;
+        padding: 5px 10px 6px;
         border-radius: 999px;
         font-family: "Avenir Next", "Segoe UI", sans-serif;
-        font-size: 0.76rem;
-        font-weight: 700;
+        font-size: 0.72rem;
+        font-weight: 800;
         line-height: 1.2;
         white-space: nowrap;
         border: 1px solid rgba(0,0,0,0.04);
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.45);
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
       }
       .badge.ok, .badge.approved, .badge.done { background: var(--ok-soft); color: #126145; }
       .badge.warn, .badge.pending, .badge.accepted, .badge.needs_owner_input { background: var(--warn-soft); color: #8f4b09; }
@@ -331,7 +342,7 @@
         font: inherit;
         border: 1px solid rgba(32, 54, 64, 0.12);
         border-radius: 12px;
-        padding: 10px 12px;
+        padding: 10px 12px 11px;
         background: rgba(255, 252, 247, 0.92);
         color: var(--ink);
         box-shadow: inset 0 1px 0 rgba(255,255,255,0.74);
@@ -345,6 +356,7 @@
       button {
         font-family: "Avenir Next", "Segoe UI", sans-serif;
         font-weight: 700;
+        letter-spacing: 0.01em;
         background: linear-gradient(180deg, #12777a 0%, #0f6064 100%);
         color: white;
         cursor: pointer;
@@ -395,23 +407,24 @@
         margin-bottom: 16px;
       }
       .summary-pill {
-        padding: 9px 13px;
+        padding: 9px 13px 10px;
         border-radius: 999px;
         background: rgba(15, 106, 109, 0.08);
         color: var(--accent-strong);
-        font-size: 0.92rem;
+        font-size: 0.9rem;
         border: 1px solid rgba(15, 106, 109, 0.08);
+        line-height: 1.25;
       }
       .section-lead {
-        margin: -4px 0 14px;
+        margin: -2px 0 14px;
         color: var(--muted);
-        line-height: 1.6;
+        line-height: 1.64;
       }
       .table-intro {
-        margin: -4px 0 14px;
+        margin: -2px 0 14px;
         color: var(--muted);
-        font-size: 0.95rem;
-        line-height: 1.55;
+        font-size: 0.94rem;
+        line-height: 1.62;
       }
       .kpi-list {
         display: grid;
@@ -529,7 +542,7 @@
         display: flex;
         justify-content: space-between;
         gap: 12px;
-        padding: 10px 0;
+        padding: 11px 0;
         border-bottom: 1px solid var(--line);
       }
       .kpi-row:last-child { border-bottom: none; }

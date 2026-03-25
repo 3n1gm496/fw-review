@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Runtime Integrity</div>
     <h2>Health</h2>
     <p>Validate the local shared runtime before blaming the workflow: Python, filesystem, templates, output paths and shared session posture are all summarized here.</p>
   </div>
@@ -14,13 +15,14 @@
   <div class="card"><strong>{{ session_health.session_ttl_hours }}</strong><span>Session TTL hours</span></div>
 </div>
 
-<section class="panel panel-accent">
+<section class="panel spotlight">
   <h3>Health Readout</h3>
   <p class="small muted">If users report broken pages, sync failures or unexpected logout behavior, start here before changing queue state or re-running analysis. This page summarizes both doctor checks and shared-session posture.</p>
 </section>
 
 <section class="panel">
   <h3>Doctor Checks</h3>
+  <p class="table-intro">Each check below is a concrete runtime guardrail. Failures usually mean the cockpit itself needs attention before reviewers should trust what they see.</p>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Status</th><th>Check</th><th>Details</th></tr></thead>

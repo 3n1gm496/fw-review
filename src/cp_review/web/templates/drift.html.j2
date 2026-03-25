@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Change Detection Studio</div>
     <h2>Drift</h2>
     <p>Compare two runs to isolate regressions, confirm resolved cleanup work and spot where the current policy is getting worse instead of better.</p>
   </div>
@@ -9,6 +10,7 @@
 
 <section class="panel panel-accent">
   <h3>Compare Runs</h3>
+  <p class="table-intro">Use auto-selection for the last two indexed runs, or pin an explicit before/after pair when you want a clean story for remediation progress.</p>
   <form class="toolbar" method="get" action="/drift">
     <select name="previous_run_id">
       <option value="">Auto previous run</option>
@@ -24,6 +26,10 @@
 
 {% if drift %}
 <section class="panel">
+  <div class="eyebrow-row">
+    <div class="eyebrow">Drift Readout</div>
+    <span class="badge {{ 'fail' if drift.new_count > drift.resolved_count else 'ok' }}">{{ 'regressing' if drift.new_count > drift.resolved_count else 'improving' }}</span>
+  </div>
   <div class="summary-strip">
     <span class="summary-pill"><strong>Previous:</strong> {{ previous_run_id }}</span>
     <span class="summary-pill"><strong>Current:</strong> {{ current_run_id }}</span>
@@ -39,14 +45,16 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Summary</h3>
-    <ul class="kpi-list">
-      <li class="kpi-row"><span>Net delta</span><strong>{{ drift.new_count - drift.resolved_count }}</strong></li>
-      <li class="kpi-row"><span>Regression pressure</span><strong>{{ 'high' if drift.new_count > drift.resolved_count else 'stable' }}</strong></li>
-      <li class="kpi-row"><span>Persisting cleanup debt</span><strong>{{ drift.persisting_count }}</strong></li>
-    </ul>
+    <p class="table-intro">Read this as a storyline: how much new debt arrived, how much cleanup really stuck, and how much old backlog is still surviving run over run.</p>
+    <div class="metric-banner">
+      <div class="metric"><strong>{{ drift.new_count - drift.resolved_count }}</strong><span>Net delta</span></div>
+      <div class="metric"><strong>{{ 'high' if drift.new_count > drift.resolved_count else 'stable' }}</strong><span>Regression pressure</span></div>
+      <div class="metric"><strong>{{ drift.persisting_count }}</strong><span>Persisting debt</span></div>
+    </div>
   </section>
   <section class="panel">
     <h3>Raw Drift Payload</h3>
+    <p class="table-intro">Keep the raw payload for investigation or export; use the summary above as the primary decision surface.</p>
     <div class="raw-block">{{ drift | tojson(indent=2) }}</div>
   </section>
 </div>

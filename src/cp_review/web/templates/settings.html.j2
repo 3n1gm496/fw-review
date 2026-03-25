@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Runtime Control Plane</div>
     <h2>Settings</h2>
     <p>Understand how the cockpit is configured, where it stores shared state and whether the local shared runtime is healthy enough for daily use.</p>
   </div>
@@ -17,6 +18,7 @@
 <div class="grid-2">
   <section class="panel">
     <h3>Operator Runtime</h3>
+    <p class="table-intro">This is the execution surface for analysis itself: management target, artifact output and report format behavior.</p>
     <ul class="kpi-list">
       <li class="kpi-row"><span>Management host</span><strong>{{ settings.management.host }}</strong></li>
       <li class="kpi-row"><span>Output directory</span><strong>{{ settings.collection.output_dir }}</strong></li>
@@ -27,6 +29,7 @@
   </section>
   <section class="panel">
     <h3>Shared Web Runtime</h3>
+    <p class="table-intro">This is the cockpit runtime: bind address, state store and whether the shared web layer is strict enough on launch.</p>
     <ul class="kpi-list">
       <li class="kpi-row"><span>Host</span><strong>{{ web_config.host }}</strong></li>
       <li class="kpi-row"><span>Port</span><strong>{{ web_config.port }}</strong></li>
@@ -40,6 +43,7 @@
 
 <section class="panel">
   <h3>Recent Jobs</h3>
+  <p class="table-intro">This is the recent activity trail for web-launched jobs and sync operations, useful when the cockpit feels stale or out of date.</p>
   {% if recent_jobs %}
   <div class="table-wrap">
     <table>

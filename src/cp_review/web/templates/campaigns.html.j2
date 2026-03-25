@@ -2,6 +2,7 @@
 {% block content %}
 <div class="hero">
   <div>
+    <div class="eyebrow">Shared Delivery Board</div>
     <h2>Campaign Board</h2>
     <p>Track shared cleanup work by campaign, keep ownership visible and jump straight into the filtered queue when a campaign needs attention.</p>
   </div>
@@ -46,8 +47,12 @@
           <td><span class="badge {{ 'ok' if campaign.status == 'active' else 'warn' }}">{{ campaign.status }}</span></td>
           <td>{{ campaign.owner }}</td>
           <td>
-            <strong>{{ campaign.open_count }}/{{ campaign.queue_count }}</strong>
-            <div class="small muted">open remediation items</div>
+            {% set completion = 0 if not campaign.queue_count else (((campaign.queue_count - campaign.open_count) / campaign.queue_count) * 100) | round(0, 'floor') %}
+            <div class="progress"><div class="progress-bar" style="width: {{ completion }}%;"></div></div>
+            <div class="progress-meta">
+              <strong>{{ completion }}%</strong>
+              <span>{{ campaign.open_count }}/{{ campaign.queue_count }} open</span>
+            </div>
           </td>
           <td>
             {% for member in campaign.members %}

@@ -150,6 +150,12 @@ def test_collect_policy_snapshot_discovers_multiple_packages_and_mixed_layer_sha
                     ],
                     "total": 3,
                 }
+            if command == "show-package":
+                assert payload["name"] == "BrokenPackage"
+                return {
+                    "name": "BrokenPackage",
+                    "access-layers": [],
+                }
             if command == "show-access-rulebase":
                 return fixture
             if command == "show-object":
@@ -180,6 +186,56 @@ def test_collect_policy_snapshot_discovers_multiple_packages_and_mixed_layer_sha
     assert {rule.package_name for rule in dataset.rules} == {"Standard", "Remote"}
     assert any(warning.code == "NO_ACCESS_LAYERS" and warning.package_name == "BrokenPackage" for warning in dataset.warnings)
     assert dataset.rules[0].source[0].name.startswith("resolved-")
+
+
+def test_collect_policy_snapshot_hydrates_package_details_when_discovery_omits_access_layers(tmp_path):
+    fixture_path = Path(__file__).parent / "fixtures" / "sample_rulebase_page.json"
+    fixture = json.loads(fixture_path.read_text(encoding="utf-8"))
+
+    class DiscoveryHydrationClient:
+        def call_api(self, command, payload):
+            if command == "show-packages":
+                return {
+                    "packages": [
+                        {"name": "Standard", "uid": "pkg-standard"},
+                    ],
+                    "total": 1,
+                }
+            if command == "show-package":
+                assert payload["name"] == "Standard"
+                return {
+                    "name": "Standard",
+                    "uid": "pkg-standard",
+                    "access-layers": [{"name": "Network", "type": "access-layer"}],
+                }
+            if command == "show-access-rulebase":
+                return fixture
+            if command == "show-object":
+                return {"uid": payload["uid"], "name": payload["uid"], "type": "generic-object"}
+            raise AssertionError(f"Unexpected command: {command}")
+
+    settings = AppConfig(
+        management=ManagementConfig(host="mgmt.example.local", username=SecretStr("user"), password=SecretStr("pass")),
+        collection=CollectionConfig(output_dir=tmp_path / "output"),
+        analysis=AnalysisConfig(),
+        reporting=ReportingConfig(),
+    )
+    run_paths = RunPaths(
+        run_id="test-run",
+        base_output=tmp_path / "output",
+        raw_dir=tmp_path / "output" / "raw" / "test-run",
+        normalized_dir=tmp_path / "output" / "normalized" / "test-run",
+        reports_dir=tmp_path / "output" / "reports" / "test-run",
+    )
+    run_paths.raw_dir.mkdir(parents=True)
+    run_paths.normalized_dir.mkdir(parents=True)
+    run_paths.reports_dir.mkdir(parents=True)
+
+    dataset = collect_policy_snapshot(DiscoveryHydrationClient(), settings, run_paths)
+
+    assert dataset.packages == ["Standard"]
+    assert len(dataset.rules) == 4
+    assert not any(warning.code == "NO_ACCESS_LAYERS" for warning in dataset.warnings)
 
 
 def test_collect_policy_snapshot_tolerates_incomplete_object_payloads(tmp_path):

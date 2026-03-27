@@ -25,6 +25,28 @@ def _extract_access_layers(package: dict[str, Any]) -> list[dict[str, Any]]:
     return result
 
 
+def _hydrate_package_details(
+    client: Any,
+    settings: AppConfig,
+    run_paths: RunPaths,
+    package: dict[str, Any],
+) -> dict[str, Any]:
+    """Fetch full package details when discovery payload omits access-layer references."""
+    package_name = package.get("name")
+    package_uid = package.get("uid")
+    if not package_name and not package_uid:
+        return package
+    selector: dict[str, Any] = {"details-level": "standard"}
+    if package_name:
+        selector["name"] = package_name
+    else:
+        selector["uid"] = package_uid
+    response = client.call_api("show-package", selector)
+    if settings.collection.save_raw and package_name:
+        save_raw_json(run_paths.raw_dir / "packages" / f"{package_name}.json", response)
+    return response if isinstance(response, dict) else package
+
+
 def discover_packages(client: Any, settings: AppConfig, run_paths: RunPaths) -> list[dict[str, Any]]:
     """Discover packages or load the selected package."""
     selected = settings.collection.package
@@ -64,6 +86,9 @@ def collect_policy_snapshot(client: Any, settings: AppConfig, run_paths: RunPath
     for package in packages:
         package_name = package.get("name", package.get("uid", "unknown-package"))
         layers = _extract_access_layers(package)
+        if not layers:
+            package = _hydrate_package_details(client, settings, run_paths, package)
+            layers = _extract_access_layers(package)
         if not layers:
             warnings.append(
                 DatasetWarning(

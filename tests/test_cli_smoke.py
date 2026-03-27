@@ -145,6 +145,10 @@ class MultiPackageE2ECheckPointClient(FakeCheckPointClient):
                 ],
                 "total": 3,
             }
+        if command == "show-package":
+            if payload.get("name") == "BrokenPackage":
+                return {"name": "BrokenPackage", "access-layers": []}
+            raise AssertionError(f"Unexpected package lookup: {payload}")
         if command == "show-access-rulebase":
             if payload.get("name") == "Remote-Layer":
                 return self._remote_rulebase
